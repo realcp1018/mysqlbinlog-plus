@@ -1,0 +1,7 @@
+mysqlbinlog-plus
+mysqlbinlog-plus.exe
+.mysqlbinlog-plus/
+*.sql
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
