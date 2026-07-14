@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,8 @@ import (
 )
 
 const binlogStartPos = 4
+
+var goMySQLLogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 type RowEvent struct {
 	File       string
@@ -95,6 +98,7 @@ func (r *Reader) StreamOnline(ctx context.Context, position mysql.BinlogPosition
 		User:      r.cfg.User,
 		Password:  r.cfg.Password,
 		ParseTime: true,
+		Logger:    goMySQLLogger,
 	})
 	defer syncer.Close()
 
@@ -146,6 +150,7 @@ func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, rowEve
 			User:      r.cfg.User,
 			Password:  r.cfg.Password,
 			ParseTime: true,
+			Logger:    goMySQLLogger,
 		})
 		startPos := uint32(binlogStartPos)
 		err := r.fetchRemoteBinlog(ctx, syncer, file, startPos, fromTime, toTime, state, rowEventHandler)

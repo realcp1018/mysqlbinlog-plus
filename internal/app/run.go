@@ -63,7 +63,7 @@ func RunOriginal(cfg config.Config) error {
 		return reader.ParseBinlogs(ctx, rowEventHandler)
 	case vars.ModeLocal:
 		reader := binlog.NewReader(cfg, nil)
-		fmt.Fprintln(os.Stdout, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
+		fmt.Fprintln(os.Stderr, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
 			"binlog_row_image=FULL, otherwise output may be incomplete or incorrect")
 		return reader.ParseBinlogs(ctx, rowEventHandler)
 	default:
@@ -125,7 +125,7 @@ func RunRollback(cfg config.Config) error {
 		readErr = reader.ParseBinlogs(ctx, rowEventHandler.Handle)
 	case vars.ModeLocal:
 		reader := binlog.NewReader(cfg, nil)
-		fmt.Fprintln(os.Stdout, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
+		fmt.Fprintln(os.Stderr, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
 			"binlog_row_image=FULL, otherwise output may be incomplete or incorrect")
 		readErr = reader.ParseBinlogs(ctx, rowEventHandler.Handle)
 	default:
