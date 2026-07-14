@@ -21,11 +21,7 @@ func TestStoreReadReverse(t *testing.T) {
 		{BinlogFile: "mysql-bin.000010", StartPos: 2, EndPos: 3, EventTime: time.Unix(2, 0), SchemaName: "app", TableName: "users", EventType: "update", SQLText: "sql-10-2"},
 		{BinlogFile: "mysql-bin.000011", StartPos: 1, EndPos: 2, EventTime: time.Unix(3, 0), SchemaName: "app", TableName: "users", EventType: "delete", SQLText: "sql-11-1"},
 	}
-	for _, record := range records {
-		if err := store.Append(ctx, record); err != nil {
-			t.Fatalf("Append returned error: %v", err)
-		}
-	}
+	appendTestRecords(t, ctx, store, records)
 
 	var got []string
 	err := store.ReadReverse(ctx, []string{"mysql-bin.000010", "mysql-bin.000011"}, func(record Record) error {
@@ -49,11 +45,12 @@ func TestStoreCountRecordsAndReadReverseRange(t *testing.T) {
 		t.Fatalf("Init returned error: %v", err)
 	}
 
-	for _, sqlText := range []string{"first", "second", "third", "fourth"} {
-		if err := store.Append(ctx, Record{BinlogFile: "mysql-bin.000010", SQLText: sqlText}); err != nil {
-			t.Fatalf("Append returned error: %v", err)
-		}
-	}
+	appendTestRecords(t, ctx, store, []Record{
+		{BinlogFile: "mysql-bin.000010", SQLText: "first"},
+		{BinlogFile: "mysql-bin.000010", SQLText: "second"},
+		{BinlogFile: "mysql-bin.000010", SQLText: "third"},
+		{BinlogFile: "mysql-bin.000010", SQLText: "fourth"},
+	})
 
 	count, err := store.CountRecords(ctx, "mysql-bin.000010")
 	if err != nil {
@@ -209,9 +206,7 @@ func TestStoreCleanupRemovesContentsButKeepsDir(t *testing.T) {
 	if err := store.Init(); err != nil {
 		t.Fatalf("Init returned error: %v", err)
 	}
-	if err := store.Append(ctx, Record{BinlogFile: "mysql-bin.000010", SQLText: "sql"}); err != nil {
-		t.Fatalf("Append returned error: %v", err)
-	}
+	appendTestRecords(t, ctx, store, []Record{{BinlogFile: "mysql-bin.000010", SQLText: "sql"}})
 	if err := store.Cleanup(); err != nil {
 		t.Fatalf("Cleanup returned error: %v", err)
 	}
@@ -224,5 +219,35 @@ func TestStoreCleanupRemovesContentsButKeepsDir(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("spool dir contains %d entries, want empty", len(entries))
+	}
+}
+
+func appendTestRecords(t *testing.T, ctx context.Context, store *Store, records []Record) {
+	t.Helper()
+
+	var writer *Writer
+	binlogFile := ""
+	for _, record := range records {
+		if record.BinlogFile != binlogFile {
+			if writer != nil {
+				if err := writer.Close(); err != nil {
+					t.Fatalf("Close returned error: %v", err)
+				}
+			}
+			var err error
+			writer, err = store.NewWriter(ctx, record.BinlogFile)
+			if err != nil {
+				t.Fatalf("NewWriter returned error: %v", err)
+			}
+			binlogFile = record.BinlogFile
+		}
+		if err := writer.Append(ctx, record); err != nil {
+			t.Fatalf("Append returned error: %v", err)
+		}
+	}
+	if writer != nil {
+		if err := writer.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
 	}
 }

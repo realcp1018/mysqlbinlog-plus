@@ -126,11 +126,7 @@ func TestWriteRollbackChunksSplitsGlobalReverseOrder(t *testing.T) {
 		{BinlogFile: "mysql-bin.000011", SQLText: "sql-11-1"},
 		{BinlogFile: "mysql-bin.000011", SQLText: "sql-11-2"},
 	}
-	for _, record := range records {
-		if err := store.Append(ctx, record); err != nil {
-			t.Fatalf("Append returned error: %v", err)
-		}
-	}
+	appendRollbackRecords(t, ctx, store, records)
 
 	output := filepath.Join(dir, "rollback.sql")
 	err := writeRollbackChunks(ctx, store, config.Config{
@@ -175,6 +171,36 @@ func assertFileContent(t *testing.T, path, want string) {
 	}
 	if string(got) != want {
 		t.Fatalf("%s = %q, want %q", path, string(got), want)
+	}
+}
+
+func appendRollbackRecords(t *testing.T, ctx context.Context, store *spool.Store, records []spool.Record) {
+	t.Helper()
+
+	var writer *spool.Writer
+	binlogFile := ""
+	for _, record := range records {
+		if record.BinlogFile != binlogFile {
+			if writer != nil {
+				if err := writer.Close(); err != nil {
+					t.Fatalf("Close returned error: %v", err)
+				}
+			}
+			var err error
+			writer, err = store.NewWriter(ctx, record.BinlogFile)
+			if err != nil {
+				t.Fatalf("NewWriter returned error: %v", err)
+			}
+			binlogFile = record.BinlogFile
+		}
+		if err := writer.Append(ctx, record); err != nil {
+			t.Fatalf("Append returned error: %v", err)
+		}
+	}
+	if writer != nil {
+		if err := writer.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
 	}
 }
 

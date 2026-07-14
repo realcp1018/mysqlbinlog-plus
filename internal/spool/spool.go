@@ -64,41 +64,6 @@ func (s *Store) Cleanup() error {
 	return nil
 }
 
-// Append writes one rollback record to the spool.
-func (s *Store) Append(ctx context.Context, record Record) error {
-	if record.BinlogFile == "" {
-		return fmt.Errorf("binlog file is required")
-	}
-	if record.SQLText == "" {
-		return fmt.Errorf("sql text is required")
-	}
-
-	db, err := s.open(record.BinlogFile)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	if err := initSchema(ctx, db); err != nil {
-		return err
-	}
-
-	_, err = db.ExecContext(ctx, `
-INSERT INTO rollback_records (
-	binlog_file, start_pos, end_pos, event_time, schema_name, table_name, event_type, sql_text
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		record.BinlogFile,
-		record.StartPos,
-		record.EndPos,
-		record.EventTime.Format(time.RFC3339Nano),
-		record.SchemaName,
-		record.TableName,
-		record.EventType,
-		record.SQLText,
-	)
-	return err
-}
-
 // NewWriter opens a transactional writer for one binlog file.
 func (s *Store) NewWriter(ctx context.Context, binlogFile string) (*Writer, error) {
 	if binlogFile == "" {
