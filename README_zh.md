@@ -49,6 +49,11 @@ Flags:
 mbp --mode online --host 127.0.0.1 --user root
 ```
 
+`--mode online` 配合 `--binlogs` 使用时，任务启动后会快照一次
+`SHOW MASTER STATUS`。较早的指定文件会读取到文件结束；若指定文件包含快照时
+的当前 binlog，则读取到该快照位置后结束。因此结果是有限且可重复的，不会等待
+后续 event。未指定 `--binlogs` 的 online 模式仍会持续实时读取。
+
 列出在线 MySQL 的 binlog 文件：
 
 ```bash

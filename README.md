@@ -49,6 +49,13 @@ Stream new row events from the current master position:
 mbp --mode online --host 127.0.0.1 --user root
 ```
 
+When `--mode online` is used with `--binlogs`, mysqlbinlog-plus snapshots
+`SHOW MASTER STATUS` when the task starts. Earlier selected files are read to
+their end; if the selected files include the snapshot's current binlog, reading
+stops at the snapshot position. This produces a finite, repeatable result and
+does not wait for later events. Online mode without `--binlogs` remains a live
+stream.
+
 List online binlog files:
 
 ```bash

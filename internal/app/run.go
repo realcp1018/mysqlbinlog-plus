@@ -41,11 +41,15 @@ func RunOriginal(cfg config.Config) error {
 		if err := client.CheckBinlogSettings(ctx); err != nil {
 			return err
 		}
+		snapshot, err := client.ShowMasterStatus(ctx)
+		if err != nil {
+			return err
+		}
 		if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
 			return err
 		}
 		reader := binlog.NewReader(cfg, mysql.NewSchemaResolver(client))
-		return reader.FetchRemoteBinlogs(ctx, mysql.GenerateServerID(), rowEventHandler)
+		return reader.FetchRemoteBinlogs(ctx, mysql.GenerateServerID(), snapshot, rowEventHandler)
 	case vars.ModeMixed:
 		client, err := mysql.Open(cfg)
 		if err != nil {
@@ -103,11 +107,15 @@ func RunRollback(cfg config.Config) error {
 		if err := client.CheckBinlogSettings(ctx); err != nil {
 			return err
 		}
+		snapshot, err := client.ShowMasterStatus(ctx)
+		if err != nil {
+			return err
+		}
 		if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
 			return err
 		}
 		reader := binlog.NewReader(cfg, mysql.NewSchemaResolver(client))
-		readErr = reader.FetchRemoteBinlogs(ctx, mysql.GenerateServerID(), rowEventHandler.Handle)
+		readErr = reader.FetchRemoteBinlogs(ctx, mysql.GenerateServerID(), snapshot, rowEventHandler.Handle)
 	case vars.ModeMixed:
 		client, err := mysql.Open(cfg)
 		if err != nil {

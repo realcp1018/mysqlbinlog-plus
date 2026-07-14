@@ -133,8 +133,8 @@ func (r *Reader) StreamOnline(ctx context.Context, position mysql.BinlogPosition
 	}
 }
 
-// FetchRemoteBinlogs streams configured online binlogs and handles row events.
-func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, rowEventHandler func(RowEvent) error) error {
+// FetchRemoteBinlogs reads configured online binlogs through the supplied master status snapshot.
+func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, snapshot mysql.BinlogPosition, rowEventHandler func(RowEvent) error) error {
 	fromTime, toTime, err := r.cfg.TimeRange()
 	if err != nil {
 		return err
@@ -153,17 +153,24 @@ func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, rowEve
 			Logger:    goMySQLLogger,
 		})
 		startPos := uint32(binlogStartPos)
-		err := r.fetchRemoteBinlog(ctx, syncer, file, startPos, fromTime, toTime, state, rowEventHandler)
+		endPos := uint32(0)
+		if file == snapshot.File {
+			endPos = snapshot.Pos
+		}
+		err := r.fetchRemoteBinlog(ctx, syncer, file, startPos, endPos, fromTime, toTime, state, rowEventHandler)
 		syncer.Close()
 		if err != nil {
 			return err
+		}
+		if endPos > 0 {
+			return nil
 		}
 	}
 	return nil
 }
 
-// fetchRemoteBinlog streams one online binlog until rotation or range end.
-func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.BinlogSyncer, file string, startPos uint32, fromTime, toTime *time.Time, state *parserState, rowEventHandler func(RowEvent) error) error {
+// fetchRemoteBinlog streams one online binlog until rotation, snapshot, or range end.
+func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.BinlogSyncer, file string, startPos, endPos uint32, fromTime, toTime *time.Time, state *parserState, rowEventHandler func(RowEvent) error) error {
 	streamer, err := syncer.StartSync(gomysql.Position{Name: file, Pos: startPos})
 	if err != nil {
 		return err
@@ -173,6 +180,13 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 		e, err := streamer.GetEvent(ctx)
 		if err != nil {
 			return err
+		}
+		if e.Header == nil {
+			return fmt.Errorf("binlog event is missing header")
+		}
+		eventStartPos := e.Header.LogPos - e.Header.EventSize
+		if endPos > 0 && eventStartPos >= endPos && (!state.inTransaction || state.transactionBeforeRange) {
+			return nil
 		}
 		if rotate, ok := e.Event.(*replication.RotateEvent); ok {
 			if next := string(rotate.NextLogName); next != "" && next != file {
@@ -191,6 +205,9 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 			if err := rowEventHandler(rowEvent); err != nil {
 				return err
 			}
+		}
+		if endPos > 0 && e.Header.LogPos >= endPos && !state.inTransaction {
+			return nil
 		}
 	}
 }
