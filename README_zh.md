@@ -111,16 +111,11 @@ mbp --mode local --binlogs mysql-bin.000010 --output out.sql --output-chunk-size
 
 时间和位置范围按事务起始事件筛选。下界为包含边界，上界为排除边界；只要事务被选中，即使其提交位置或时间超过上界，仍会完整输出该事务。
 
-每条生成的 SQL 末尾都会追加源 binlog event 时间注释，使用本地时区并精确到秒。
 带字符集元数据的字节值会解码为文本输出；缺少文本元数据的值仍使用十六进制字面量，以保护二进制数据。
 
 对于原始 SQL，`mysqlbinlog-plus` 会一边解析 binlog event，一边立即写出对应的 SQL。设置 `--output` 和 `--output-chunk-size` 后，当前分块达到上限时才切换到下一个输出文件，语句顺序保持不变。
 
 回滚 SQL 必须按 event 的逆序输出，因此采用另一条处理链：解析时会生成回滚 SQL，并存入 `--rollback-cache-dir` 指定的 SQLite 缓存。所有指定 binlog 都解析完成后，`mysqlbinlog-plus` 才会从 SQLite 倒序读取这些回滚 SQL 并写出最终结果。启用分块输出时，各个独立的回滚分块会从 SQLite 并发读取并写入。
-
-回滚阶段进度写入标准错误，标准输出仍只包含 SQL。
-
-`--output` 不能位于 `--rollback-cache-dir` 内，因为任务成功后会清理回滚缓存目录。每个 binlog 的缓存文件以 binlog 基名命名，因此 `--binlogs` 不能包含基名相同的两个路径。
 
 ## MySQL 要求
 

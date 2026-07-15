@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"mysqlbinlog-plus/internal/binlog"
@@ -15,6 +16,8 @@ import (
 	"mysqlbinlog-plus/internal/spool"
 	"mysqlbinlog-plus/internal/vars"
 )
+
+var rollbackLogger = log.New(os.Stderr, "", log.LstdFlags)
 
 // RunOriginal parses selected binlog events and writes original SQL.
 func RunOriginal(cfg config.Config) error {
@@ -78,18 +81,12 @@ func RunOriginal(cfg config.Config) error {
 // RunRollback parses selected binlog events and writes rollback SQL.
 func RunRollback(cfg config.Config) error {
 	ctx := context.Background()
+	rollbackLogger.Println("[INFO] Rollback started.")
 	store := spool.NewStore(cfg.RollbackCacheDir)
 	if err := store.Init(); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Building rollback cache in %q...\n", cfg.RollbackCacheDir)
-
-	cleanSpool := false
-	defer func() {
-		if cleanSpool {
-			_ = store.Cleanup()
-		}
-	}()
+	rollbackLogger.Printf("[INFO] Building rollback cache in %q...", cfg.RollbackCacheDir)
 
 	rowEventHandler := newRollbackEventHandler(ctx, store, cfg.NoPrimaryKey)
 
@@ -149,26 +146,32 @@ func RunRollback(cfg config.Config) error {
 	}
 	// After parsing selected binlogs, read cached rollback SQL from sqlite in reverse order and write output.
 	if cfg.Output != "" && cfg.OutputChunkSize > 0 {
-		fmt.Fprintln(os.Stderr, "Writing rollback SQL chunks...")
+		rollbackLogger.Println("[INFO] Writing rollback SQL chunks...")
 		if err := writeRollbackChunks(ctx, store, cfg); err != nil {
 			return err
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "Writing rollback SQL...")
+		rollbackLogger.Println("[INFO] Writing rollback SQL...")
 		outputWriter, err := newSQLWriter(cfg)
 		if err != nil {
 			return err
 		}
-		defer outputWriter.Close()
 
 		if err := store.ReadReverse(ctx, cfg.Binlogs, func(record spool.Record) error {
 			return outputWriter.Write(appendEventTimeComment(record.SQLText, record.EventTime))
 		}); err != nil {
+			_ = outputWriter.Close()
+			return err
+		}
+		if err := outputWriter.Close(); err != nil {
 			return err
 		}
 	}
 
-	cleanSpool = true
+	if err := store.Cleanup(); err != nil {
+		return err
+	}
+	rollbackLogger.Println("[INFO] Rollback completed.")
 	return nil
 }
 

@@ -117,8 +117,6 @@ Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
 output in full, even when its commit is beyond the upper bound.
 
-Each generated SQL statement ends with a comment containing the source binlog
-event time, formatted in the local time zone with one-second precision.
 Byte values from columns with character-set metadata are rendered as decoded
 text; values without text metadata remain hexadecimal literals to preserve
 binary data.
@@ -134,13 +132,6 @@ SQLite cache specified by `--rollback-cache-dir`. After all selected binlogs
 have been parsed, it reads the cached rollback SQL in reverse order and writes
 the final output. With chunked output enabled, independent rollback chunks are
 read from SQLite and written concurrently.
-Rollback phase progress is written to standard error, so standard output remains
-SQL-only.
-
-`--output` must not be inside `--rollback-cache-dir`, because the rollback cache
-directory is removed after a successful run. Each binlog cache file is named
-from the binlog basename, so `--binlogs` cannot contain two paths with the same
-basename.
 
 ## MySQL Requirements
 
