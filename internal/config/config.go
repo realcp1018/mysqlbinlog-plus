@@ -45,6 +45,14 @@ func (cfg *Config) ValidateAndNormalize() error {
 	if cfg.ListBinlogs && cfg.Mode != vars.ModeOnline {
 		return fmt.Errorf("--list-binlogs requires --mode=online")
 	}
+	if !cfg.ListBinlogs && len(cfg.Binlogs) == 0 {
+		if cfg.Mode != vars.ModeOnline {
+			return fmt.Errorf("--mode=%s requires --binlogs", cfg.Mode)
+		}
+		if cfg.Rollback {
+			return fmt.Errorf("online streaming with rollback is not supported; use --binlogs with --rollback")
+		}
+	}
 	if cfg.OutputChunkSize == 0 || cfg.OutputChunkSize < -1 {
 		return fmt.Errorf("--output-chunk-size must be -1 or greater than 0")
 	}

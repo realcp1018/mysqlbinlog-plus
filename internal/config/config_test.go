@@ -206,6 +206,29 @@ func TestValidateAndNormalizeListBinlogsRequiresOnlineMode(t *testing.T) {
 	}
 }
 
+func TestValidateAndNormalizeRequiresBinlogsOutsideOnlineMode(t *testing.T) {
+	cfg := validConfig(func(cfg *Config) {
+		cfg.Mode = vars.ModeMixed
+		cfg.Binlogs = nil
+	})
+	err := cfg.ValidateAndNormalize()
+	if err == nil || !strings.Contains(err.Error(), "--mode=mixed requires --binlogs") {
+		t.Fatalf("error = %v, want --binlogs required error", err)
+	}
+}
+
+func TestValidateAndNormalizeRejectsOnlineStreamingRollback(t *testing.T) {
+	cfg := validConfig(func(cfg *Config) {
+		cfg.Mode = vars.ModeOnline
+		cfg.Binlogs = nil
+		cfg.Rollback = true
+	})
+	err := cfg.ValidateAndNormalize()
+	if err == nil || !strings.Contains(err.Error(), "online streaming with rollback is not supported") {
+		t.Fatalf("error = %v, want online streaming rollback error", err)
+	}
+}
+
 func TestValidateAndNormalizeDefaultsModeToMixed(t *testing.T) {
 	cfg := validConfig()
 	if err := cfg.ValidateAndNormalize(); err != nil {
@@ -220,6 +243,7 @@ func validConfig(mutators ...func(*Config)) Config {
 	cfg := Config{
 		Port:             3306,
 		User:             "repl",
+		Binlogs:          []string{"mysql-bin.000001"},
 		OutputChunkSize:  -1,
 		RollbackCacheDir: ".mysqlbinlog-plus",
 	}

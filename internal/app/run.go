@@ -198,10 +198,6 @@ func ListOnlineBinlogs(cfg config.Config) error {
 // StreamOnline streams online binlog events and writes original SQL.
 func StreamOnline(cfg config.Config) error {
 	ctx := context.Background()
-	if cfg.Rollback {
-		return fmt.Errorf("online streaming with rollback is not supported; use --binlogs with --rollback")
-	}
-
 	client, err := mysql.Open(cfg)
 	if err != nil {
 		return err

@@ -61,9 +61,6 @@ var rootCmd = &cobra.Command{
 			return app.ListOnlineBinlogs(cfg)
 		}
 		if len(cfg.Binlogs) == 0 {
-			if cfg.Mode != vars.ModeOnline {
-				return fmt.Errorf("--mode=%s requires --binlogs", cfg.Mode)
-			}
 			return app.StreamOnline(cfg)
 		}
 		if cfg.Rollback {
