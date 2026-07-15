@@ -96,7 +96,7 @@ func requiresMySQL(cfg config.Config) bool {
 
 // initAll registers command flags and version handling.
 func initAll() {
-	initVersion()
+	rootCmd.Flags().SortFlags = false
 	rootCmd.Flags().StringVar(&cfg.Mode, "mode", "mixed", "binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online)")
 	rootCmd.Flags().StringVar(&cfg.Host, "host", "127.0.0.1", "MySQL host")
 	rootCmd.Flags().IntVar(&cfg.Port, "port", 3306, "MySQL port")
@@ -110,12 +110,13 @@ func initAll() {
 	rootCmd.Flags().Uint32Var(&cfg.ToPos, "to-pos", 0, "exclusive transaction start position")
 	rootCmd.Flags().StringSliceVar(&cfg.TablePatterns, "table-patterns", nil, "table patterns to include")
 	rootCmd.Flags().StringSliceVar(&cfg.SQLTypes, "sql-type", nil, "SQL event types to include (insert|update|delete|ddl)")
-	rootCmd.Flags().BoolVar(&cfg.Rollback, "rollback", false, "generate rollback SQL for DML row events; DDL statements are not included")
 	rootCmd.Flags().BoolVar(&cfg.NoPrimaryKey, "no-primary-key", false, "omit primary key for INSERT SQL")
+	rootCmd.Flags().BoolVar(&cfg.Rollback, "rollback", false, "generate rollback SQL for DML row events; DDL statements are not included")
+	rootCmd.Flags().StringVar(&cfg.RollbackCacheDir, "rollback-cache-dir", "", "rollback SQLite cache dir; required with --rollback")
 	rootCmd.Flags().StringVar(&cfg.Output, "output", "", "write output to a file; when chunking is enabled this path is used as the split file base name")
 	rootCmd.Flags().IntVar(&cfg.OutputChunkSize, "output-chunk-size", -1, "SQL rows per output chunk; -1 writes a single output file")
-	rootCmd.Flags().StringVar(&cfg.RollbackCacheDir, "rollback-cache-dir", "", "rollback SQLite cache dir; required with --rollback")
 	rootCmd.MarkFlagsMutuallyExclusive("rollback", "no-primary-key")
+	initVersion()
 }
 
 // Execute initializes and runs the root command.
