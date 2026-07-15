@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"mysqlbinlog-plus/internal/config"
+	"mysqlbinlog-plus/internal/vars"
 )
 
 type sqlWriter struct {
@@ -121,4 +123,12 @@ func (w *sqlWriter) Close() error {
 	err := w.file.Close()
 	w.file = nil
 	return err
+}
+
+// appendEventTimeComment adds the source binlog event time to generated SQL.
+func appendEventTimeComment(sqlText string, eventTime time.Time) string {
+	if eventTime.IsZero() {
+		return sqlText
+	}
+	return fmt.Sprintf("%s -- %s", sqlText, eventTime.Format(vars.TimeFormat))
 }

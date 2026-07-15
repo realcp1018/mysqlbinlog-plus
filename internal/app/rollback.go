@@ -229,7 +229,7 @@ func writeRollbackChunk(ctx context.Context, store *spool.Store, output string, 
 				}
 				wroteSQL = true
 			}
-			_, err := fmt.Fprintln(file, record.SQLText)
+			_, err := fmt.Fprintln(file, appendEventTimeComment(record.SQLText, record.EventTime))
 			return err
 		}); err != nil {
 			return err

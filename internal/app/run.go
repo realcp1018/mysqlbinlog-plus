@@ -159,7 +159,7 @@ func RunRollback(cfg config.Config) error {
 		defer outputWriter.Close()
 
 		if err := store.ReadReverse(ctx, cfg.Binlogs, func(record spool.Record) error {
-			return outputWriter.Write(record.SQLText)
+			return outputWriter.Write(appendEventTimeComment(record.SQLText, record.EventTime))
 		}); err != nil {
 			return err
 		}
@@ -230,13 +230,14 @@ func StreamOnline(cfg config.Config) error {
 // newOriginalEventHandler creates a handler that renders original SQL and writes it.
 func newOriginalEventHandler(writer *sqlWriter, noPrimaryKey bool) func(binlog.RowEvent) error {
 	return func(rowEvent binlog.RowEvent) error {
-		if rowEvent.Change.Type == event.DDL {
-			return writer.Write(rowEvent.DDLSQLText)
+		sqlText := rowEvent.DDLSQLText
+		if rowEvent.Change.Type != event.DDL {
+			var err error
+			sqlText, err = rowEvent.Change.ToOriginalSQL(event.SQLOptions{NoPrimaryKey: noPrimaryKey})
+			if err != nil {
+				return err
+			}
 		}
-		sqlText, err := rowEvent.Change.ToOriginalSQL(event.SQLOptions{NoPrimaryKey: noPrimaryKey})
-		if err != nil {
-			return err
-		}
-		return writer.Write(sqlText)
+		return writer.Write(appendEventTimeComment(sqlText, rowEvent.EventTime))
 	}
 }

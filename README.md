@@ -117,6 +117,9 @@ Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
 output in full, even when its commit is beyond the upper bound.
 
+Each generated SQL statement ends with a comment containing the source binlog
+event time, formatted in the local time zone with one-second precision.
+
 For original SQL, mysqlbinlog-plus parses binlog events and writes each SQL
 statement immediately. When `--output` and `--output-chunk-size` are set, it
 switches to the next output file when the current chunk reaches its limit, while
