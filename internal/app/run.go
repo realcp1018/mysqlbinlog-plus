@@ -82,6 +82,7 @@ func RunRollback(cfg config.Config) error {
 	if err := store.Init(); err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "Building rollback cache in %q...\n", cfg.RollbackCacheDir)
 
 	cleanSpool := false
 	defer func() {
@@ -148,10 +149,12 @@ func RunRollback(cfg config.Config) error {
 	}
 	// After parsing selected binlogs, read cached rollback SQL from sqlite in reverse order and write output.
 	if cfg.Output != "" && cfg.OutputChunkSize > 0 {
+		fmt.Fprintln(os.Stderr, "Writing rollback SQL chunks...")
 		if err := writeRollbackChunks(ctx, store, cfg); err != nil {
 			return err
 		}
 	} else {
+		fmt.Fprintln(os.Stderr, "Writing rollback SQL...")
 		outputWriter, err := newSQLWriter(cfg)
 		if err != nil {
 			return err

@@ -134,6 +134,8 @@ SQLite cache specified by `--rollback-cache-dir`. After all selected binlogs
 have been parsed, it reads the cached rollback SQL in reverse order and writes
 the final output. With chunked output enabled, independent rollback chunks are
 read from SQLite and written concurrently.
+Rollback phase progress is written to standard error, so standard output remains
+SQL-only.
 
 `--output` must not be inside `--rollback-cache-dir`, because the rollback cache
 directory is removed after a successful run. Each binlog cache file is named

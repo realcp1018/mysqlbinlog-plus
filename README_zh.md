@@ -118,6 +118,8 @@ mbp --mode local --binlogs mysql-bin.000010 --output out.sql --output-chunk-size
 
 回滚 SQL 必须按 event 的逆序输出，因此采用另一条处理链：解析时会生成回滚 SQL，并存入 `--rollback-cache-dir` 指定的 SQLite 缓存。所有指定 binlog 都解析完成后，`mysqlbinlog-plus` 才会从 SQLite 倒序读取这些回滚 SQL 并写出最终结果。启用分块输出时，各个独立的回滚分块会从 SQLite 并发读取并写入。
 
+回滚阶段进度写入标准错误，标准输出仍只包含 SQL。
+
 `--output` 不能位于 `--rollback-cache-dir` 内，因为任务成功后会清理回滚缓存目录。每个 binlog 的缓存文件以 binlog 基名命名，因此 `--binlogs` 不能包含基名相同的两个路径。
 
 ## MySQL 要求
