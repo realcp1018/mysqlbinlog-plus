@@ -19,6 +19,23 @@ var rootCmd = &cobra.Command{
 	Use:   vars.AppName,
 	Short: "MySQL binlog parser",
 	Long:  fmt.Sprintf("%s generates original SQL or rollback SQL from MySQL row-based binlog events.", vars.AppName),
+	Example: `  # Stream new events from the current online binlog.
+  mbp --mode online --host 127.0.0.1 --user root
+
+  # Parse selected remote binlog files and write original SQL.
+  mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
+
+  # Parse local binlog files without connecting to MySQL.
+  mbp --mode local --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
+
+  # Split original SQL into files containing at most 100000 statements each.
+  mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
+
+  # Generate rollback SQL from a local binlog file.
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql
+
+  # Split rollback SQL into files containing at most 100000 statements each.
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if version {
 			printVersion()

@@ -117,15 +117,17 @@ Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
 output in full, even when its commit is beyond the upper bound.
 
-Original SQL is written directly while binlog events are parsed. When `--output`
-and `--output-chunk-size` are set, the direct writer rotates files sequentially
-as statements are produced.
+For original SQL, mysqlbinlog-plus parses binlog events and writes each SQL
+statement immediately. When `--output` and `--output-chunk-size` are set, it
+switches to the next output file when the current chunk reaches its limit, while
+preserving statement order.
 
-Rollback SQL is different because rollback output must be written in reverse
-event order. During parsing, rollback statements are stored in the SQLite cache
-specified by `--rollback-cache-dir` without final output chunking. After parsing
-finishes, mysqlbinlog-plus reads the cache in reverse order. If chunked output is
-enabled, rollback chunks are written concurrently.
+Rollback SQL must be output in reverse event order, so it uses a separate flow.
+While parsing, mysqlbinlog-plus generates rollback SQL and stores it in the
+SQLite cache specified by `--rollback-cache-dir`. After all selected binlogs
+have been parsed, it reads the cached rollback SQL in reverse order and writes
+the final output. With chunked output enabled, independent rollback chunks are
+read from SQLite and written concurrently.
 
 `--output` must not be inside `--rollback-cache-dir`, because the rollback cache
 directory is removed after a successful run. Each binlog cache file is named
