@@ -55,9 +55,9 @@ clean:
 
 build:
 ifeq ($(OS),Windows_NT)
-	set "CGO_ENABLED=0"&& set "GOARCH=amd64"&& set "GOOS=$(GOOS)"&& go build -ldflags="$(BUILD_FLAGS)" -o $(BINARY_NAME)$(BINARY_EXT) main.go
+	set "CGO_ENABLED=0"&& set "GOARCH=amd64"&& set "GOOS=$(GOOS)"&& go build -trimpath -ldflags="$(BUILD_FLAGS)" -o $(BINARY_NAME)$(BINARY_EXT) main.go
 else
-	CGO_ENABLED=0 GOARCH=amd64 GOOS=$(GOOS) go build -ldflags="$(BUILD_FLAGS)" -o $(BINARY_NAME)$(BINARY_EXT) main.go
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=$(GOOS) go build -trimpath -ldflags="$(BUILD_FLAGS)" -o $(BINARY_NAME)$(BINARY_EXT) main.go
 endif
 
 run:
@@ -70,21 +70,21 @@ endif
 # Cross-compilation targets for building binaries for other operating systems.
 linux:
 ifeq ($(OS),Windows_NT)
-	set CGO_ENABLED=0&& set GOARCH=amd64&& set GOOS=linux&& go build -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
+	set CGO_ENABLED=0&& set GOARCH=amd64&& set GOOS=linux&& go build -trimpath -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
 else
-	CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -trimpath -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
 endif
 
 windows:
 ifeq ($(OS),Windows_NT)
-	set CGO_ENABLED=0&& set GOARCH=amd64&& set GOOS=windows&& go build -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME}.exe main.go
+	set CGO_ENABLED=0&& set GOARCH=amd64&& set GOOS=windows&& go build -trimpath -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME}.exe main.go
 else
-	CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME}.exe main.go
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=windows go build -trimpath -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME}.exe main.go
 endif
 
 macos:
 ifeq ($(OS),Windows_NT)
-	set CGO_ENABLED=0&& set GOARCH=amd64&& set GOOS=darwin&& go build -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
+	set CGO_ENABLED=0&& set GOARCH=amd64&& set GOOS=darwin&& go build -trimpath -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
 else
-	CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=darwin go build -trimpath -ldflags="$(BUILD_FLAGS)" -o ${BINARY_NAME} main.go
 endif
