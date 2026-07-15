@@ -21,26 +21,26 @@ Usage:
   mbp [flags]
 
 Flags:
-      --binlogs strings             binlogs to parse
-      --from-pos uint32             inclusive transaction start position
-      --from-time string            inclusive transaction start time
-  -h, --help                        help for mbp
-      --host string                 MySQL host (default "127.0.0.1")
-      --list-binlogs                list online binlog files and exit
       --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "mixed")
+      --host string                 MySQL host (default "127.0.0.1")
+  -P, --port int                    MySQL port (default 3306)
+  -u, --user string                 MySQL user (default "root")
+  -p, --password string             MySQL password (prompts when omitted)
+      --list-binlogs                list online binlog files and exit
+      --binlogs strings             binlogs to parse
+      --from-time string            inclusive transaction start time
+      --to-time string              exclusive transaction start time
+      --from-pos uint32             inclusive transaction start position
+      --to-pos uint32               exclusive transaction start position
+      --table-patterns strings      table patterns to include
+      --sql-type strings            SQL event types to include (insert|update|delete|ddl)
       --no-primary-key              omit primary key for INSERT SQL
-      --output string               write output to a file; when chunking is enabled this path is used as the split file base name
-      --output-chunk-size int       SQL rows per output chunk; -1 writes a single output file (default -1)
-      --password string             MySQL password (prompts when omitted)
-      --port int                    MySQL port (default 3306)
       --rollback                    generate rollback SQL for DML row events; DDL statements are not included
       --rollback-cache-dir string   rollback SQLite cache dir; required with --rollback
-      --sql-type strings            SQL event types to include (insert|update|delete|ddl)
-      --table-patterns strings      table patterns to include
-      --to-pos uint32               exclusive transaction start position
-      --to-time string              exclusive transaction start time
-      --user string                 MySQL user (default "root")
+  -o, --output string               write output to a file; when chunking is enabled this path is used as the split file base name
+      --output-chunk-size int       SQL rows per output chunk; -1 writes a single output file (default -1)
   -V, --version                     show version of mbp
+  -h, --help                        help for mbp
 ```
 
 从当前主库位置开始持续读取新的行事件：
