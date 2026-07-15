@@ -64,6 +64,17 @@ func TestUpdateParserStateMarksSchemaUnreliableAfterDDL(t *testing.T) {
 	}
 }
 
+func TestUpdateParserStateKeepsSchemaReliableAfterTruncate(t *testing.T) {
+	tracker := &parserState{}
+
+	tracker.update(&replication.BinlogEvent{
+		Event: &replication.QueryEvent{Query: []byte("TRUNCATE TABLE t")},
+	}, true)
+	if tracker.schemaUnreliable {
+		t.Fatal("tracker marked schema as unreliable after TRUNCATE TABLE")
+	}
+}
+
 func TestUpdateParserStateIgnoresDDLBeforeRange(t *testing.T) {
 	tracker := &parserState{}
 

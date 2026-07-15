@@ -404,7 +404,7 @@ func (s *parserState) update(e *replication.BinlogEvent, inRange bool) {
 			s.inTransaction = false
 			s.transactionBeforeRange = false
 		default:
-			if inRange && isSchemaChangingQuery(query) {
+			if inRange && isSchemaChangingQuery(query) && !strings.HasPrefix(query, "TRUNCATE TABLE") {
 				s.schemaUnreliable = true
 			}
 		}
