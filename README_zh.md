@@ -112,6 +112,7 @@ mbp --mode local --binlogs mysql-bin.000010 --output out.sql --output-chunk-size
 时间和位置范围按事务起始事件筛选。下界为包含边界，上界为排除边界；只要事务被选中，即使其提交位置或时间超过上界，仍会完整输出该事务。
 
 每条生成的 SQL 末尾都会追加源 binlog event 时间注释，使用本地时区并精确到秒。
+带字符集元数据的字节值会解码为文本输出；缺少文本元数据的值仍使用十六进制字面量，以保护二进制数据。
 
 对于原始 SQL，`mysqlbinlog-plus` 会一边解析 binlog event，一边立即写出对应的 SQL。设置 `--output` 和 `--output-chunk-size` 后，当前分块达到上限时才切换到下一个输出文件，语句顺序保持不变。
 

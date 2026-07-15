@@ -220,6 +220,9 @@ func formatValue(value any, column Column) string {
 	case string:
 		return formatTextValue(v, column.Charset)
 	case []byte:
+		if strings.TrimSpace(column.Charset) != "" {
+			return formatTextValue(string(v), column.Charset)
+		}
 		return "X'" + strings.ToUpper(hex.EncodeToString(v)) + "'"
 	case time.Time:
 		return quoteString(v.Format("2006-01-02 15:04:05.999999"))

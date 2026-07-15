@@ -166,6 +166,28 @@ func TestOriginalUpdateChangedBinaryValue(t *testing.T) {
 	}
 }
 
+func TestOriginalUpdateTextBytes(t *testing.T) {
+	sql, err := (&RowChange{
+		Schema: "app",
+		Table:  "jobs",
+		Type:   Update,
+		Cols: []Column{
+			{Name: "id", PrimaryKey: true},
+			{Name: "message", Charset: "utf8mb4"},
+		},
+		Before: []any{int64(1), []byte("running")},
+		After:  []any{int64(1), []byte("done")},
+	}).ToOriginalSQL(SQLOptions{})
+	if err != nil {
+		t.Fatalf("ToOriginalSQL returned error: %v", err)
+	}
+
+	want := "UPDATE `app`.`jobs` SET `message` = 'done' WHERE `id` = 1;"
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+}
+
 func TestDeleteFallsBackToAllColumnsWithoutPrimaryKey(t *testing.T) {
 	sql, err := (&RowChange{
 		Schema: "app",

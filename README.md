@@ -119,6 +119,9 @@ output in full, even when its commit is beyond the upper bound.
 
 Each generated SQL statement ends with a comment containing the source binlog
 event time, formatted in the local time zone with one-second precision.
+Byte values from columns with character-set metadata are rendered as decoded
+text; values without text metadata remain hexadecimal literals to preserve
+binary data.
 
 For original SQL, mysqlbinlog-plus parses binlog events and writes each SQL
 statement immediately. When `--output` and `--output-chunk-size` are set, it
