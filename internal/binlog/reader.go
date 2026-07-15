@@ -184,14 +184,17 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 		if e.Header == nil {
 			return fmt.Errorf("binlog event is missing header")
 		}
+		if _, ok := e.Event.(*replication.RotateEvent); ok {
+			// MySQL sends a fake rotate event when the replication stream starts.
+			if e.Header.Timestamp == 0 || e.Header.LogPos == 0 {
+				continue
+			}
+			// A real rotate event marks the end of the current binlog.
+			return nil
+		}
 		eventStartPos := e.Header.LogPos - e.Header.EventSize
 		if endPos > 0 && eventStartPos >= endPos && (!state.inTransaction || state.transactionBeforeRange) {
 			return nil
-		}
-		if rotate, ok := e.Event.(*replication.RotateEvent); ok {
-			if next := string(rotate.NextLogName); next != "" && next != file {
-				return nil
-			}
 		}
 		rowEvents, err := r.processEvent(file, e, fromTime, toTime, state)
 		if err != nil {
