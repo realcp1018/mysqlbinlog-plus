@@ -98,7 +98,7 @@ func requiresMySQL(cfg config.Config) bool {
 func initAll() {
 	rootCmd.Flags().SortFlags = false
 	rootCmd.Flags().StringVar(&cfg.Mode, "mode", "mixed", "binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online)")
-	rootCmd.Flags().StringVar(&cfg.Host, "host", "127.0.0.1", "MySQL host")
+	rootCmd.Flags().StringVarP(&cfg.Host, "host", "h", "127.0.0.1", "MySQL host")
 	rootCmd.Flags().IntVarP(&cfg.Port, "port", "P", 3306, "MySQL port")
 	rootCmd.Flags().StringVarP(&cfg.User, "user", "u", "root", "MySQL user")
 	rootCmd.Flags().StringVarP(&cfg.Password, "password", "p", "", "MySQL password (prompts when omitted)")
@@ -117,6 +117,7 @@ func initAll() {
 	rootCmd.Flags().IntVar(&cfg.OutputChunkSize, "output-chunk-size", -1, "SQL rows per output chunk; -1 writes a single output file")
 	rootCmd.MarkFlagsMutuallyExclusive("rollback", "no-primary-key")
 	initVersion()
+	rootCmd.Flags().BoolP("help", "?", false, fmt.Sprintf("help for %s", vars.AppName))
 }
 
 // Execute initializes and runs the root command.

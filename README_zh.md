@@ -22,7 +22,7 @@ Usage:
 
 Flags:
       --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "mixed")
-      --host string                 MySQL host (default "127.0.0.1")
+  -h, --host string                 MySQL host (default "127.0.0.1")
   -P, --port int                    MySQL port (default 3306)
   -u, --user string                 MySQL user (default "root")
   -p, --password string             MySQL password (prompts when omitted)
@@ -40,7 +40,7 @@ Flags:
   -o, --output string               write output to a file; when chunking is enabled this path is used as the split file base name
       --output-chunk-size int       SQL rows per output chunk; -1 writes a single output file (default -1)
   -V, --version                     show version of mbp
-  -h, --help                        help for mbp
+  -?, --help                        help for mbp
 ```
 
 从当前主库位置开始持续读取新的行事件：
