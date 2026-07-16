@@ -43,10 +43,10 @@ func TestSQLWriterSplitOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile second output: %v", err)
 	}
-	if got, want := string(first), "SET NAMES utf8mb4;\none\ntwo\n"; got != want {
+	if got, want := string(first), "SET NAMES utf8mb4;\nSET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\none\ntwo\n"; got != want {
 		t.Fatalf("first output = %q, want %q", got, want)
 	}
-	if got, want := string(second), "SET NAMES utf8mb4;\nthree\n"; got != want {
+	if got, want := string(second), "SET NAMES utf8mb4;\nSET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\nthree\n"; got != want {
 		t.Fatalf("second output = %q, want %q", got, want)
 	}
 }
@@ -138,9 +138,9 @@ func TestWriteRollbackChunksSplitsGlobalReverseOrder(t *testing.T) {
 		t.Fatalf("writeRollbackChunks returned error: %v", err)
 	}
 
-	assertFileContent(t, output+".000001", "SET NAMES utf8mb4;\nsql-11-2\nsql-11-1\n")
-	assertFileContent(t, output+".000002", "SET NAMES utf8mb4;\nsql-10-3\nsql-10-2\n")
-	assertFileContent(t, output+".000003", "SET NAMES utf8mb4;\nsql-10-1\n")
+	assertFileContent(t, output+".000001", "SET NAMES utf8mb4;\nSET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\nsql-11-2\nsql-11-1\n")
+	assertFileContent(t, output+".000002", "SET NAMES utf8mb4;\nSET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\nsql-10-3\nsql-10-2\n")
+	assertFileContent(t, output+".000003", "SET NAMES utf8mb4;\nSET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\nsql-10-1\n")
 }
 
 func TestWriteRollbackChunksCreatesEmptyFirstChunk(t *testing.T) {

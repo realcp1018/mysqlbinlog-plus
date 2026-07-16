@@ -227,6 +227,9 @@ func writeRollbackChunk(ctx context.Context, store *spool.Store, output string, 
 				if _, err := fmt.Fprintln(file, "SET NAMES utf8mb4;"); err != nil {
 					return err
 				}
+				if _, err := fmt.Fprintln(file, "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');"); err != nil {
+					return err
+				}
 				wroteSQL = true
 			}
 			_, err := fmt.Fprintln(file, appendEventTimeComment(record.SQLText, record.EventTime))

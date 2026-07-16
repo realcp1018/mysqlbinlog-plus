@@ -86,6 +86,19 @@ func TestUpdateParserStateIgnoresDDLBeforeRange(t *testing.T) {
 	}
 }
 
+func TestIsSchemaChangingQuerySkipsLeadingComments(t *testing.T) {
+	tests := []string{
+		"/* migration */ ALTER TABLE t ADD COLUMN age INT",
+		"/*!80000 ALTER TABLE t ADD COLUMN age INT */",
+		"CREATE TEMPORARY TABLE tmp (id INT)",
+	}
+	for _, query := range tests {
+		if !isSchemaChangingQuery(query) {
+			t.Errorf("isSchemaChangingQuery(%q) = false, want true", query)
+		}
+	}
+}
+
 func TestConvertEmitsDDLByDefault(t *testing.T) {
 	reader := NewReader(config.Config{}, nil)
 	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})

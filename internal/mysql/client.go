@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 
@@ -61,21 +62,49 @@ func (c *Client) Ping(ctx context.Context) error {
 
 // ShowMasterStatus returns the current MySQL binlog position.
 func (c *Client) ShowMasterStatus(ctx context.Context) (BinlogPosition, error) {
-	var (
-		position     BinlogPosition
-		binlogDoDB   sql.NullString
-		binlogIgnore sql.NullString
-		executedGTID sql.NullString
-	)
-	err := c.db.QueryRowContext(ctx, "SHOW MASTER STATUS").Scan(
-		&position.File,
-		&position.Pos,
-		&binlogDoDB,
-		&binlogIgnore,
-		&executedGTID,
-	)
+	var serverVersion string
+	if err := c.db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&serverVersion); err != nil {
+		return BinlogPosition{}, fmt.Errorf("SELECT VERSION() failed: %w", err)
+	}
+
+	query := "SHOW MASTER STATUS"
+	comparison, err := gomysql.CompareServerVersions(serverVersion, "8.4.0")
 	if err != nil {
-		return BinlogPosition{}, fmt.Errorf("SHOW MASTER STATUS failed: %w; check your log_bin setting", err)
+		return BinlogPosition{}, fmt.Errorf("parse MySQL version %q: %w", serverVersion, err)
+	}
+	if comparison >= 0 {
+		query = "SHOW BINARY LOG STATUS"
+	}
+
+	rows, err := c.db.QueryContext(ctx, query)
+	if err != nil {
+		return BinlogPosition{}, fmt.Errorf("%s failed: %w; check your log_bin setting", query, err)
+	}
+	defer rows.Close()
+
+	columnNames, err := rows.Columns()
+	if err != nil {
+		return BinlogPosition{}, fmt.Errorf("read %s columns: %w", query, err)
+	}
+	if len(columnNames) < 2 {
+		return BinlogPosition{}, fmt.Errorf("%s returned %d columns, expected at least 2", query, len(columnNames))
+	}
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return BinlogPosition{}, err
+		}
+		return BinlogPosition{}, fmt.Errorf("%s returned no rows", query)
+	}
+
+	var position BinlogPosition
+	destinations := make([]any, len(columnNames))
+	destinations[0] = &position.File
+	destinations[1] = &position.Pos
+	for i := 2; i < len(destinations); i++ {
+		destinations[i] = new(any)
+	}
+	if err := rows.Scan(destinations...); err != nil {
+		return BinlogPosition{}, err
 	}
 	return position, nil
 }
@@ -103,8 +132,7 @@ func (c *Client) ShowBinaryLogs(ctx context.Context) ([]BinaryLog, error) {
 		destinations[0] = &log.Name
 		destinations[1] = &log.Size
 		for i := 2; i < columnCount; i++ {
-			var ignored any
-			destinations[i] = &ignored
+			destinations[i] = new(any)
 		}
 		if err := rows.Scan(destinations...); err != nil {
 			return nil, err

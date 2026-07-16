@@ -61,7 +61,7 @@ func (w *sqlWriter) Write(sqlText string) error {
 				return err
 			}
 		}
-		if err := w.writeCharsetPreamble(); err != nil {
+		if err := w.writeOutputPreamble(); err != nil {
 			return err
 		}
 		w.rowCount++
@@ -69,13 +69,13 @@ func (w *sqlWriter) Write(sqlText string) error {
 		return err
 	}
 	if w.file != nil {
-		if err := w.writeCharsetPreamble(); err != nil {
+		if err := w.writeOutputPreamble(); err != nil {
 			return err
 		}
 		_, err := fmt.Fprintln(w.file, sqlText)
 		return err
 	}
-	if err := w.writeCharsetPreamble(); err != nil {
+	if err := w.writeOutputPreamble(); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintln(w.stdout, sqlText)
@@ -99,8 +99,8 @@ func (w *sqlWriter) rotate() error {
 	return nil
 }
 
-// writeCharsetPreamble declares the UTF-8 encoding used by generated SQL text.
-func (w *sqlWriter) writeCharsetPreamble() error {
+// writeOutputPreamble writes the configuration required before generated SQL text.
+func (w *sqlWriter) writeOutputPreamble() error {
 	if w.charsetWritten {
 		return nil
 	}
@@ -109,6 +109,9 @@ func (w *sqlWriter) writeCharsetPreamble() error {
 		output = w.file
 	}
 	if _, err := fmt.Fprintln(output, "SET NAMES utf8mb4;"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(output, "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');"); err != nil {
 		return err
 	}
 	w.charsetWritten = true

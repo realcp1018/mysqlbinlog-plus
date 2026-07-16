@@ -429,7 +429,7 @@ func (e stopParseError) Error() string {
 
 // isSchemaChangingQuery reports whether a query is a supported DDL statement.
 func isSchemaChangingQuery(query string) bool {
-	query = strings.TrimSpace(query)
+	query = strings.ToUpper(normalizeDDLStatement(query))
 	if query == "" {
 		return false
 	}
@@ -439,10 +439,12 @@ func isSchemaChangingQuery(query string) bool {
 		"CREATE DATABASE",
 		"CREATE INDEX",
 		"CREATE TABLE",
+		"CREATE TEMPORARY TABLE",
 		"CREATE VIEW",
 		"DROP DATABASE",
 		"DROP INDEX",
 		"DROP TABLE",
+		"DROP TEMPORARY TABLE",
 		"DROP VIEW",
 		"RENAME TABLE",
 		"TRUNCATE TABLE",
@@ -452,6 +454,28 @@ func isSchemaChangingQuery(query string) bool {
 		}
 	}
 	return false
+}
+
+// normalizeDDLStatement removes leading SQL comments before DDL prefix matching.
+func normalizeDDLStatement(query string) string {
+	query = strings.TrimSpace(query)
+	for strings.HasPrefix(query, "/*") {
+		end := strings.Index(query, "*/")
+		if end < 0 {
+			return query
+		}
+		comment := query[2:end]
+		query = strings.TrimSpace(query[end+2:])
+		if !strings.HasPrefix(comment, "!") {
+			continue
+		}
+
+		statement := strings.TrimLeft(comment[1:], "0123456789")
+		if statement != "" {
+			return strings.TrimSpace(statement)
+		}
+	}
+	return query
 }
 
 // convertType maps a rows event type to an internal SQL event type.
