@@ -2,7 +2,7 @@ package filter
 
 import (
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -41,7 +41,7 @@ func MatchAny(patterns []string, database, table string) bool {
 
 	name := database + "." + table
 	for _, pattern := range patterns {
-		matched, err := filepath.Match(pattern, name)
+		matched, err := path.Match(pattern, name)
 		if err == nil && matched {
 			return true
 		}

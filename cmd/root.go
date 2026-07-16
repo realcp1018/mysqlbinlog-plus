@@ -105,7 +105,7 @@ func initAll() {
 	rootCmd.Flags().StringVar(&cfg.ToTime, "to-time", "", "exclusive transaction start time")
 	rootCmd.Flags().Uint32Var(&cfg.FromPos, "from-pos", 0, "inclusive transaction start position")
 	rootCmd.Flags().Uint32Var(&cfg.ToPos, "to-pos", 0, "exclusive transaction start position")
-	rootCmd.Flags().StringSliceVar(&cfg.TablePatterns, "table-patterns", nil, "table patterns to include")
+	rootCmd.Flags().StringSliceVar(&cfg.TablePatterns, "table-patterns", nil, "table patterns to include (e.g. app.users,*.orders)")
 	rootCmd.Flags().StringSliceVar(&cfg.SQLTypes, "sql-type", nil, "SQL event types to include (insert|update|delete|ddl)")
 	rootCmd.Flags().BoolVar(&cfg.NoPrimaryKey, "no-primary-key", false, "omit primary key for INSERT SQL")
 	rootCmd.Flags().BoolVar(&cfg.Rollback, "rollback", false, "generate rollback SQL for DML row events; DDL statements are not included")
