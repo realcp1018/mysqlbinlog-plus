@@ -87,11 +87,26 @@ func (c *Client) ShowBinaryLogs(ctx context.Context) ([]BinaryLog, error) {
 		return nil, fmt.Errorf("SHOW BINARY LOGS failed: %w; check your log_bin setting", err)
 	}
 	defer rows.Close()
+	columnNames, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("read SHOW BINARY LOGS columns: %w", err)
+	}
+	columnCount := len(columnNames)
+	if columnCount < 2 {
+		return nil, fmt.Errorf("SHOW BINARY LOGS returned %d columns, expected at least 2", columnCount)
+	}
 
 	var logs []BinaryLog
 	for rows.Next() {
 		var log BinaryLog
-		if err := rows.Scan(&log.Name, &log.Size); err != nil {
+		destinations := make([]any, columnCount)
+		destinations[0] = &log.Name
+		destinations[1] = &log.Size
+		for i := 2; i < columnCount; i++ {
+			var ignored any
+			destinations[i] = &ignored
+		}
+		if err := rows.Scan(destinations...); err != nil {
 			return nil, err
 		}
 		logs = append(logs, log)
