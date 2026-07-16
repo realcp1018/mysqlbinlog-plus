@@ -6,7 +6,12 @@
 
 ## 构建
 
-`make`会自动检测操作系统进行编译，支持的操作系统为: windows,linux,macos
+Windows、Linux 和 macOS 的可用文件已发布到
+[Releases 页面](https://github.com/realcp1018/mysqlbinlog-plus/releases/latest)。
+下载适用于当前操作系统的压缩包并解压。Windows 可直接运行 `mbp.exe`；Linux 和
+macOS 首次运行前需要执行 `chmod +x mbp`。
+
+如需从源码构建，`make` 会自动检测操作系统，支持 Windows、Linux 和 macOS：
 
 ```bash
 make
@@ -20,6 +25,25 @@ mbp generates original SQL or rollback SQL from MySQL row-based binlog events.
 Usage:
   mbp [flags]
 
+Examples:
+  # Stream new events from the current online binlog.
+  mbp --mode online --host 127.0.0.1 --user root
+
+  # Parse selected remote binlog files and write original SQL.
+  mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
+
+  # Parse local binlog files without connecting to MySQL.
+  mbp --mode local --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
+
+  # Split original SQL into files containing at most 100000 statements each.
+  mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
+
+  # Generate rollback SQL from a local binlog file.
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql
+
+  # Split rollback SQL into files containing at most 100000 statements each.
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000
+
 Flags:
       --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "mixed")
   -h, --host string                 MySQL host (default "127.0.0.1")
@@ -32,7 +56,7 @@ Flags:
       --to-time string              exclusive transaction start time
       --from-pos uint32             inclusive transaction start position
       --to-pos uint32               exclusive transaction start position
-      --table-patterns strings      table patterns to include
+      --table-patterns strings      table patterns to include (e.g. app.users,*.orders)
       --sql-type strings            SQL event types to include (insert|update|delete|ddl)
       --no-primary-key              omit primary key for INSERT SQL
       --rollback                    generate rollback SQL for DML row events; DDL statements are not included
@@ -43,71 +67,12 @@ Flags:
   -?, --help                        help for mbp
 ```
 
-从当前主库位置开始持续读取新的行事件：
-
-```bash
-mbp --mode online --host 127.0.0.1 --user root
-```
-
-`--mode online` 配合 `--binlogs` 使用时，任务启动后会快照一次
-`SHOW MASTER STATUS`。较早的指定文件会读取到文件结束；若指定文件包含快照时
-的当前 binlog，则读取到该快照位置后结束。因此结果是有限且可重复的，不会等待
-后续 event。未指定 `--binlogs` 的 online 模式仍会持续实时读取。
-
-列出在线 MySQL 的 binlog 文件：
-
-```bash
-mbp --mode online --list-binlogs --host 127.0.0.1 --user root
-```
-
-使用默认的 `mixed` 模式解析本地 binlog，并从 MySQL 读取表字段元数据：
-
-```bash
-mbp --binlogs mysql-bin.000010,mysql-bin.000011 --host 127.0.0.1 --user root
-```
-
-解析指定本地 binlog 并输出原始 SQL：
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010,mysql-bin.000011
-```
-
-只输出 DDL 语句：
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010 --sql-type ddl
-```
-
-按事务起始位置解析单个本地 binlog：
-
-```bash
-mbp \
-  --mode local \
-  --binlogs mysql-bin.000010 \
-  --from-pos 120 \
-  --to-pos 900
-```
-
-生成回滚 SQL：
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus
-```
-
-将输出写入分块文件：
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010 --output out.sql --output-chunk-size 100000
-```
-
-## 密码输入
-
-需要连接 MySQL 的命令（`mixed`、`online` 和 `--list-binlogs`）未指定
-`--password` 时，会隐藏回显提示输入密码；直接按回车允许使用空密码。本地模式不会提示输入密码。
-
-非交互场景请显式提供 `--password`。使用 `--password=""` 可以明确指定空密码且不触发提示。
-
 ## 输出行为
+
+`--mode online` 配合 `--binlogs` 使用时，任务启动后会快照当前 binlog 位置。
+较早的指定文件会读取到文件结束；若指定文件包含快照时的当前 binlog，则读取到
+该快照位置后结束。因此结果是有限且可重复的，不会等待后续 event。未指定
+`--binlogs` 的 online 模式仍会持续实时读取。
 
 时间和位置范围按事务起始事件筛选。下界为包含边界，上界为排除边界；只要事务被选中，即使其提交位置或时间超过上界，仍会完整输出该事务。
 

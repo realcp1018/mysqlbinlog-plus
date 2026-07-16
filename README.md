@@ -6,7 +6,14 @@
 
 ## Build
 
-`make` detects OS automatically, OS supported: windows, linux, macos
+Ready-to-use binaries for Windows, Linux, and macOS are available on the
+[Releases page](https://github.com/realcp1018/mysqlbinlog-plus/releases/latest).
+Download the archive for your operating system, extract it, and run `mbp`
+(`mbp.exe` on Windows). On Linux and macOS, run `chmod +x mbp` once after
+extracting the archive.
+
+To build from source, `make` detects the operating system automatically and
+supports Windows, Linux, and macOS:
 
 ```bash
 make
@@ -20,6 +27,25 @@ mbp generates original SQL or rollback SQL from MySQL row-based binlog events.
 Usage:
   mbp [flags]
 
+Examples:
+  # Stream new events from the current online binlog.
+  mbp --mode online --host 127.0.0.1 --user root
+
+  # Parse selected remote binlog files and write original SQL.
+  mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
+
+  # Parse local binlog files without connecting to MySQL.
+  mbp --mode local --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
+
+  # Split original SQL into files containing at most 100000 statements each.
+  mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
+
+  # Generate rollback SQL from a local binlog file.
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql
+
+  # Split rollback SQL into files containing at most 100000 statements each.
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000
+
 Flags:
       --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "mixed")
   -h, --host string                 MySQL host (default "127.0.0.1")
@@ -32,7 +58,7 @@ Flags:
       --to-time string              exclusive transaction start time
       --from-pos uint32             inclusive transaction start position
       --to-pos uint32               exclusive transaction start position
-      --table-patterns strings      table patterns to include
+      --table-patterns strings      table patterns to include (e.g. app.users,*.orders)
       --sql-type strings            SQL event types to include (insert|update|delete|ddl)
       --no-primary-key              omit primary key for INSERT SQL
       --rollback                    generate rollback SQL for DML row events; DDL statements are not included
@@ -43,75 +69,14 @@ Flags:
   -?, --help                        help for mbp
 ```
 
-Stream new row events from the current master position:
-
-```bash
-mbp --mode online --host 127.0.0.1 --user root
-```
-
-When `--mode online` is used with `--binlogs`, mysqlbinlog-plus snapshots
-`SHOW MASTER STATUS` when the task starts. Earlier selected files are read to
-their end; if the selected files include the snapshot's current binlog, reading
-stops at the snapshot position. This produces a finite, repeatable result and
-does not wait for later events. Online mode without `--binlogs` remains a live
-stream.
-
-List online binlog files:
-
-```bash
-mbp --mode online --list-binlogs --host 127.0.0.1 --user root
-```
-
-Parse local binlogs in the default `mixed` mode, using MySQL table metadata:
-
-```bash
-mbp --binlogs mysql-bin.000010,mysql-bin.000011 --host 127.0.0.1 --user root
-```
-
-Parse selected local binlogs and output original SQL:
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010,mysql-bin.000011
-```
-
-Output only DDL statements:
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010 --sql-type ddl
-```
-
-Parse transactions from a single local binlog by their start position:
-
-```bash
-mbp \
-  --mode local \
-  --binlogs mysql-bin.000010 \
-  --from-pos 120 \
-  --to-pos 900
-```
-
-Generate rollback SQL:
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus
-```
-
-Write output to chunked files:
-
-```bash
-mbp --mode local --binlogs mysql-bin.000010 --output out.sql --output-chunk-size 100000
-```
-
-## Password Input
-
-Commands that connect to MySQL (`mixed`, `online`, and `--list-binlogs`) prompt
-for a password when `--password` is omitted. Input is not echoed, and an empty
-password is allowed by pressing Enter. Local mode does not prompt for a password.
-
-For non-interactive use, provide `--password` explicitly. Use `--password=""`
-to explicitly select an empty password without prompting.
-
 ## Output Behavior
+
+When `--mode online` is used with `--binlogs`, mysqlbinlog-plus snapshots the
+current binary log position when the task starts. Earlier selected files are
+read to their end; if the selected files include the snapshot's current binlog,
+reading stops at the snapshot position. This produces a finite, repeatable
+result and does not wait for later events. Online mode without `--binlogs`
+remains a live stream.
 
 Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
