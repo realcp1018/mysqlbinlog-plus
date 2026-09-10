@@ -153,7 +153,9 @@ func TestIsSchemaChangingQuerySkipsLeadingComments(t *testing.T) {
 
 func TestConvertEmitsDDLByDefault(t *testing.T) {
 	reader := NewReader(config.Config{}, nil)
-	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})
+	e := ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT")
+	e.Event.(*replication.QueryEvent).Schema = []byte("app")
+	events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -163,11 +165,28 @@ func TestConvertEmitsDDLByDefault(t *testing.T) {
 	if got, want := events[0].Change.Type, event.DDL; got != want {
 		t.Fatalf("event type = %q, want %q", got, want)
 	}
-	if got, want := events[0].DDLSQLText, "ALTER TABLE t ADD COLUMN age INT;"; got != want {
+	if got, want := events[0].DDLSQLText, "ALTER TABLE `app`.`t` ADD COLUMN `age` INT;"; got != want {
 		t.Fatalf("DDLSQLText = %q, want %q", got, want)
 	}
 	if events[0].DDLSQLText == "" {
 		t.Fatal("DDL event was treated as a rows event")
+	}
+}
+
+// TestConvertKeepsDDLSchema verifies that qualified table names are preserved in DDL output.
+func TestConvertKeepsDDLSchema(t *testing.T) {
+	reader := NewReader(config.Config{}, nil)
+	e := ddlBinlogEvent("ALTER TABLE other.t ADD COLUMN age INT")
+	e.Event.(*replication.QueryEvent).Schema = []byte("app")
+	events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+	if err != nil {
+		t.Fatalf("convert returned error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("convert returned %d events, want 1", len(events))
+	}
+	if got, want := events[0].DDLSQLText, "ALTER TABLE `other`.`t` ADD COLUMN `age` INT;"; got != want {
+		t.Fatalf("DDLSQLText = %q, want %q", got, want)
 	}
 }
 

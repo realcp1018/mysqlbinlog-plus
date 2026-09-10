@@ -7,6 +7,7 @@ import (
 
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/ast"
+	"github.com/pingcap/tidb/pkg/parser/format"
 	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
 )
 
@@ -37,11 +38,7 @@ func New() *Parser {
 
 // ParseDDLTargets parses one DDL statement and returns its affected objects.
 func (p *Parser) ParseDDLTargets(query, defaultSchema string) (Targets, error) {
-	normalized := NormalizeStatement(query)
-	statement, err := p.parser.ParseOneStmt(normalized, "", "")
-	if err != nil && strings.HasPrefix(strings.ToUpper(normalized), "ALTER VIEW ") {
-		statement, err = p.parser.ParseOneStmt("CREATE "+normalized[len("ALTER "):], "", "")
-	}
+	statement, err := p.parseStatement(query)
 	if err != nil {
 		return Targets{}, err
 	}
@@ -87,6 +84,37 @@ func (p *Parser) ParseDDLTargets(query, defaultSchema string) (Targets, error) {
 		return Targets{}, ErrUnsupportedDDL
 	}
 	return targets, nil
+}
+
+// QualifyDDL restores a supported table DDL with its default schema applied.
+func (p *Parser) QualifyDDL(query, defaultSchema string) (string, error) {
+	statement, err := p.parseStatement(query)
+	if err != nil {
+		return "", err
+	}
+	switch statement.(type) {
+	case *ast.AlterTableStmt, *ast.CreateTableStmt, *ast.DropTableStmt, *ast.RenameTableStmt, *ast.TruncateTableStmt:
+	default:
+		return "", ErrUnsupportedDDL
+	}
+
+	var restored strings.Builder
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, &restored)
+	ctx.DefaultDB = defaultSchema
+	if err := statement.Restore(ctx); err != nil {
+		return "", err
+	}
+	return restored.String(), nil
+}
+
+// parseStatement parses one statement and handles the supported ALTER VIEW compatibility form.
+func (p *Parser) parseStatement(query string) (ast.StmtNode, error) {
+	normalized := NormalizeStatement(query)
+	statement, err := p.parser.ParseOneStmt(normalized, "", "")
+	if err != nil && strings.HasPrefix(strings.ToUpper(normalized), "ALTER VIEW ") {
+		statement, err = p.parser.ParseOneStmt("CREATE "+normalized[len("ALTER "):], "", "")
+	}
+	return statement, err
 }
 
 // appendTableTarget adds an AST table name using the event's default schema when needed.

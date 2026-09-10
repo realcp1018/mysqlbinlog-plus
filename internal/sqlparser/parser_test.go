@@ -58,3 +58,29 @@ func TestParseDDLTargetsRejectsUnsupportedStatement(t *testing.T) {
 		t.Fatal("ParseDDLTargets() returned nil error for unsupported DDL")
 	}
 }
+
+// TestQualifyDDLAddsDefaultSchema verifies that restored table DDL is executable without a selected database.
+func TestQualifyDDLAddsDefaultSchema(t *testing.T) {
+	parser := New()
+	tests := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{name: "alter table", query: "ALTER TABLE cert MODIFY COLUMN name varchar(256) NOT NULL", want: "ALTER TABLE `app`.`cert` MODIFY COLUMN `name` VARCHAR(256) NOT NULL"},
+		{name: "drop tables", query: "DROP TABLE cert, archived", want: "DROP TABLE `app`.`cert`, `app`.`archived`"},
+		{name: "rename tables", query: "RENAME TABLE cert TO cert_new, app.old TO app.new", want: "RENAME TABLE `app`.`cert` TO `app`.`cert_new`, `app`.`old` TO `app`.`new`"},
+		{name: "qualified table", query: "ALTER TABLE other.cert ADD COLUMN age INT", want: "ALTER TABLE `other`.`cert` ADD COLUMN `age` INT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parser.QualifyDDL(tt.query, "app")
+			if err != nil {
+				t.Fatalf("QualifyDDL() returned error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("QualifyDDL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

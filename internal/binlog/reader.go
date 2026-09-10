@@ -322,6 +322,15 @@ func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.T
 	if !isSchemaChangingQuery(strings.ToUpper(query)) {
 		return RowEvent{}, false
 	}
+	outputQuery := query
+	if queryEvent.Schema != nil && len(queryEvent.Schema) > 0 {
+		if state.ddlParser == nil {
+			state.ddlParser = sqlparser.New()
+		}
+		if qualified, err := state.ddlParser.QualifyDDL(query, string(queryEvent.Schema)); err == nil {
+			outputQuery = qualified
+		}
+	}
 	if len(r.cfg.TablePatterns) > 0 {
 		if state.ddlParser == nil {
 			state.ddlParser = sqlparser.New()
@@ -341,15 +350,15 @@ func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.T
 			return RowEvent{}, false
 		}
 	}
-	if !strings.HasSuffix(query, ";") {
-		query += ";"
+	if !strings.HasSuffix(outputQuery, ";") {
+		outputQuery += ";"
 	}
 	return RowEvent{
 		File:       file,
 		StartPos:   startPos,
 		EndPos:     endPos,
 		EventTime:  eventTime,
-		DDLSQLText: query,
+		DDLSQLText: outputQuery,
 		Change: event.RowChange{
 			Type: event.DDL,
 		},
