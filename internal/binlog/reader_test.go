@@ -171,6 +171,33 @@ func TestConvertEmitsDDLByDefault(t *testing.T) {
 	}
 }
 
+// TestConvertFiltersDDLByTablePattern verifies that DDL output follows table patterns.
+func TestConvertFiltersDDLByTablePattern(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     string
+		wantCount int
+	}{
+		{name: "unrelated table", query: "ALTER TABLE cert MODIFY COLUMN name VARCHAR(256) NOT NULL", wantCount: 0},
+		{name: "matching table", query: "ALTER TABLE redis_mem ADD COLUMN value TEXT", wantCount: 1},
+		{name: "multiple tables with one match", query: "RENAME TABLE cert TO cert_new, redis_mem TO redis_mem_new", wantCount: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := NewReader(config.Config{TablePatterns: []string{"dba_admin.redis_mem"}}, nil)
+			e := ddlBinlogEvent(tt.query)
+			e.Event.(*replication.QueryEvent).Schema = []byte("dba_admin")
+			events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+			if err != nil {
+				t.Fatalf("convert returned error: %v", err)
+			}
+			if len(events) != tt.wantCount {
+				t.Fatalf("convert returned %d events, want %d", len(events), tt.wantCount)
+			}
+		})
+	}
+}
+
 func TestConvertFiltersDDLBySQLType(t *testing.T) {
 	reader := NewReader(config.Config{SQLTypes: []string{string(event.Insert)}}, nil)
 	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})

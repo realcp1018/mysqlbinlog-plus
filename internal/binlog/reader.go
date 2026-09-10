@@ -251,7 +251,7 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 	}
 	state.update(e, true)
 
-	if ddl, ok := r.ddlEvent(file, startPos, e.Header.LogPos, eventTime, e); ok {
+	if ddl, ok := r.ddlEvent(file, startPos, e.Header.LogPos, eventTime, e, state); ok {
 		return []RowEvent{ddl}, nil
 	}
 
@@ -310,7 +310,7 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 }
 
 // ddlEvent converts schema-changing query events into DDL output events.
-func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.Time, e *replication.BinlogEvent) (RowEvent, bool) {
+func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.Time, e *replication.BinlogEvent, state *parserState) (RowEvent, bool) {
 	if r.cfg.Rollback || !r.matchSQLType(event.DDL) {
 		return RowEvent{}, false
 	}
@@ -321,6 +321,25 @@ func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.T
 	query := strings.TrimSpace(string(queryEvent.Query))
 	if !isSchemaChangingQuery(strings.ToUpper(query)) {
 		return RowEvent{}, false
+	}
+	if len(r.cfg.TablePatterns) > 0 {
+		if state.ddlParser == nil {
+			state.ddlParser = sqlparser.New()
+		}
+		targets, err := state.ddlParser.ParseDDLTargets(query, string(queryEvent.Schema))
+		if err != nil || len(targets.Tables) == 0 {
+			return RowEvent{}, false
+		}
+		matched := false
+		for _, target := range targets.Tables {
+			if filter.MatchAny(r.cfg.TablePatterns, target.Schema, target.Table) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return RowEvent{}, false
+		}
 	}
 	if !strings.HasSuffix(query, ";") {
 		query += ";"
