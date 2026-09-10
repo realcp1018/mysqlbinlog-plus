@@ -427,18 +427,91 @@ func TestSelectRemoteBinlogStartFromLatestHandlesFirstFileAfterFromTime(t *testi
 	}
 }
 
-func TestRemoteEventTimestampUsesFormatDescriptionTime(t *testing.T) {
-	e := &replication.BinlogEvent{
-		Header: &replication.EventHeader{Timestamp: 0},
-		Event:  &replication.FormatDescriptionEvent{CreateTimestamp: 123},
+func TestSelectRemoteBinlogStartFromLatestHandlesMissingFirstTimes(t *testing.T) {
+	from := time.Unix(100, 0)
+	firstTimes := []time.Time{time.Time{}, time.Time{}}
+
+	if got, want := selectRemoteBinlogStartFromLatest(firstTimes, 2, &from), 0; got != want {
+		t.Fatalf("start index = %d, want %d", got, want)
+	}
+}
+
+func TestSelectRemoteBinlogStartFromLatestWithoutFromTimeStartsAtOldest(t *testing.T) {
+	if got, want := selectRemoteBinlogStartFromLatest(nil, 2, nil), 0; got != want {
+		t.Fatalf("start index = %d, want %d", got, want)
+	}
+}
+
+func TestRemoteEventTimestamp(t *testing.T) {
+	tests := []struct {
+		name string
+		e    *replication.BinlogEvent
+		want time.Time
+		ok   bool
+	}{
+		{
+			name: "format description uses header time",
+			e: &replication.BinlogEvent{
+				Header: &replication.EventHeader{Timestamp: 123},
+				Event:  &replication.FormatDescriptionEvent{CreateTimestamp: 456},
+			},
+			want: time.Unix(123, 0),
+			ok:   true,
+		},
+		{
+			name: "format description falls back to create time",
+			e: &replication.BinlogEvent{
+				Header: &replication.EventHeader{},
+				Event:  &replication.FormatDescriptionEvent{CreateTimestamp: 456},
+			},
+			want: time.Unix(456, 0),
+			ok:   true,
+		},
+		{
+			name: "format description without time is unusable",
+			e: &replication.BinlogEvent{
+				Header: &replication.EventHeader{},
+				Event:  &replication.FormatDescriptionEvent{},
+			},
+			ok: false,
+		},
+		{
+			name: "previous gtids has no event time",
+			e: &replication.BinlogEvent{
+				Header: &replication.EventHeader{Timestamp: 123},
+				Event:  &replication.PreviousGTIDsEvent{},
+			},
+			ok: false,
+		},
+		{
+			name: "regular event uses header time",
+			e: &replication.BinlogEvent{
+				Header: &replication.EventHeader{Timestamp: 789},
+				Event:  &replication.QueryEvent{},
+			},
+			want: time.Unix(789, 0),
+			ok:   true,
+		},
+		{
+			name: "zero header time is unusable",
+			e: &replication.BinlogEvent{
+				Header: &replication.EventHeader{},
+				Event:  &replication.QueryEvent{},
+			},
+			ok: false,
+		},
 	}
 
-	got, ok := remoteEventTimestamp(e)
-	if !ok {
-		t.Fatal("remoteEventTimestamp returned no timestamp")
-	}
-	if want := time.Unix(123, 0); got != want {
-		t.Fatalf("event time = %v, want %v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := remoteEventTimestamp(tt.e)
+			if ok != tt.ok {
+				t.Fatalf("remoteEventTimestamp ok = %v, want %v", ok, tt.ok)
+			}
+			if ok && got != tt.want {
+				t.Fatalf("event time = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

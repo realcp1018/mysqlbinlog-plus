@@ -46,6 +46,11 @@ func NewReader(cfg config.Config, schemaResolver *mysql.SchemaResolver) *Reader 
 	return &Reader{cfg: cfg, schemaResolver: schemaResolver}
 }
 
+// SetBinlogs updates the files used by subsequent parse operations.
+func (r *Reader) SetBinlogs(binlogs []string) {
+	r.cfg.Binlogs = binlogs
+}
+
 // newOnlineSyncer creates a replication client for the configured MySQL server.
 func (r *Reader) newOnlineSyncer(serverID uint32) *replication.BinlogSyncer {
 	return replication.NewBinlogSyncer(replication.BinlogSyncerConfig{
@@ -150,6 +155,9 @@ func (r *Reader) DiscoverRemoteBinlogs(ctx context.Context, serverID uint32, log
 	}
 	if fromTime == nil && toTime == nil {
 		return nil, fmt.Errorf("time range is required for automatic binlog discovery")
+	}
+	if fromTime == nil {
+		fmt.Fprintln(os.Stderr, "Warning: --to-time without --from-time or --binlogs reads from the oldest available binlog; specify --from-time and/or --binlogs to limit the range")
 	}
 
 	snapshotIndex := -1
@@ -260,6 +268,10 @@ func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, snapsh
 		err := r.fetchRemoteBinlog(ctx, syncer, file, startPos, endPos, fromTime, toTime, state, rowEventHandler)
 		syncer.Close()
 		if err != nil {
+			var stop stopParseError
+			if errors.As(err, &stop) {
+				return nil
+			}
 			return err
 		}
 		if endPos > 0 {
@@ -315,14 +327,10 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 		}
 		eventStartPos := e.Header.LogPos - e.Header.EventSize
 		if endPos > 0 && eventStartPos >= endPos && (!state.inTransaction || state.transactionBeforeRange) {
-			return nil
+			return stopParseError{}
 		}
 		rowEvents, err := r.processEvent(file, e, fromTime, toTime, state)
 		if err != nil {
-			var stop stopParseError
-			if errors.As(err, &stop) {
-				return nil
-			}
 			return err
 		}
 		for _, rowEvent := range rowEvents {
@@ -331,7 +339,7 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 			}
 		}
 		if endPos > 0 && e.Header.LogPos >= endPos && !state.inTransaction {
-			return nil
+			return stopParseError{}
 		}
 	}
 }

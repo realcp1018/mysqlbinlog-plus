@@ -32,6 +32,9 @@ Examples:
   # 自动发现指定时间范围对应的远程 binlog。
   mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00"
 
+  # 为自动发现的历史时间范围生成回滚 SQL。
+  mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00" --rollback --output rollback.sql
+
   # Parse selected remote binlog files and write original SQL.
   mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
 
@@ -80,9 +83,13 @@ Flags:
 
 `--mode online` 配合 `--binlogs` 使用时，任务启动后会快照当前 binlog 位置。
 较早的指定文件会读取到文件结束；若指定文件包含快照时的当前 binlog，则读取到
-该快照位置后结束。因此结果是有限且可重复的，不会等待后续 event。
+该快照位置后结束。因此结果是有限且可重复的，不会等待后续 event。指定的文件按
+给出顺序处理；配置时间范围时请按时间先后顺序列出文件，因为读取到达 `--to-time`
+边界后会停止，之后列出的文件不会再被读取。
 
-正常使用时，建议通过 `--binlogs` 明确指定远程 binlog 文件名，不需要本地 binlog 文件路径。使用 `--from-time` 时也建议同时指定覆盖目标时间范围的远程 binlog，以避免探测历史文件并明确输入范围。未指定 `--binlogs` 且未指定时间范围时，会进入无界的实时流式读取，适用于需要持续监听当前 binlog 的场景。未指定 `--binlogs` 但指定了 `--from-time` 或 `--to-time` 时，会探测远程 binlog 中首个有效时间戳 event，自动选择保守的历史文件范围，并读取到任务启动时的快照位点或 `--to-time` 边界（以先到者为准）后结束，不等待后续 event。
+正常使用时，建议通过 `--binlogs` 明确指定远程 binlog 文件名，不需要本地 binlog 文件路径。使用 `--from-time` 时也建议同时指定覆盖目标时间范围的远程 binlog，以避免探测历史文件并明确输入范围。未指定 `--binlogs` 且未指定时间范围时，会进入无界的实时流式读取，适用于需要持续监听当前 binlog 的场景。未指定 `--binlogs` 但指定 `--from-time` 时，会探测远程 binlog 中首个有效时间戳 event，自动选择保守的历史文件范围；只指定 `--to-time` 时，会从当前仍可用的最早 binlog 开始。两种时间范围读取都会在任务启动时的快照位点或 `--to-time` 边界（以先到者为准）后结束，不等待后续 event。
+
+如果只指定 `--to-time`，没有指定 `--from-time` 或 `--binlogs`，自动范围会从当前仍可用的最早 binlog 开始，可能读取所有可用文件后才到达上界。需要更窄范围时，请指定 `--from-time` 和/或 `--binlogs`。
 
 时间和位置范围按事务起始事件筛选。下界为包含边界，上界为排除边界；只要事务被选中，即使其提交位置或时间超过上界，仍会完整输出该事务。
 
@@ -127,4 +134,4 @@ MySQL 用户需要与所选模式对应的权限：
 - `--rollback` 不能与 `--no-primary-key` 一起使用；回滚 SQL 必须保留主键值。
 - 回滚 SQL 不包含 DDL 语句。由于没有可回滚的 DML 行事件，`--rollback --sql-type ddl` 会被拒绝。
 - 暂不支持 GTID 范围。
-- 在线回滚流式处理被刻意禁用；请使用 `--binlogs --rollback`。
+- 在线回滚流式处理被刻意禁用；请使用 `--binlogs --rollback`，或为 `--rollback` 同时指定时间范围以自动发现文件。

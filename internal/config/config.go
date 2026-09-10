@@ -50,8 +50,8 @@ func (cfg *Config) ValidateAndNormalize() error {
 		if cfg.Mode != vars.ModeOnline {
 			return fmt.Errorf("--mode=%s requires --binlogs", cfg.Mode)
 		}
-		if cfg.Rollback {
-			return fmt.Errorf("online streaming with rollback is not supported; use --binlogs with --rollback")
+		if cfg.Rollback && cfg.FromTime == "" && cfg.ToTime == "" {
+			return fmt.Errorf("--rollback requires --binlogs or --from-time/--to-time in online mode")
 		}
 	}
 	if cfg.OutputChunkSize == 0 || cfg.OutputChunkSize < -1 {

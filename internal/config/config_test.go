@@ -229,15 +229,36 @@ func TestValidateAndNormalizeAllowsOnlineTimeRangeWithoutBinlogs(t *testing.T) {
 	}
 }
 
-func TestValidateAndNormalizeRejectsOnlineStreamingRollback(t *testing.T) {
+func TestValidateAndNormalizeAllowsOnlineToTimeWithoutBinlogs(t *testing.T) {
+	cfg := validConfig(func(cfg *Config) {
+		cfg.Binlogs = nil
+		cfg.ToTime = "2026-06-30 10:00:00"
+	})
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatalf("ValidateAndNormalize returned error: %v", err)
+	}
+}
+
+func TestValidateAndNormalizeRejectsOnlineRollbackWithoutFilesOrTimeRange(t *testing.T) {
 	cfg := validConfig(func(cfg *Config) {
 		cfg.Mode = vars.ModeOnline
 		cfg.Binlogs = nil
 		cfg.Rollback = true
 	})
 	err := cfg.ValidateAndNormalize()
-	if err == nil || !strings.Contains(err.Error(), "online streaming with rollback is not supported") {
-		t.Fatalf("error = %v, want online streaming rollback error", err)
+	if err == nil || !strings.Contains(err.Error(), "requires --binlogs or --from-time/--to-time") {
+		t.Fatalf("error = %v, want online rollback selection error", err)
+	}
+}
+
+func TestValidateAndNormalizeAllowsOnlineRollbackWithToTime(t *testing.T) {
+	cfg := validConfig(func(cfg *Config) {
+		cfg.Binlogs = nil
+		cfg.Rollback = true
+		cfg.ToTime = "2026-06-30 10:00:00"
+	})
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatalf("ValidateAndNormalize returned error: %v", err)
 	}
 }
 

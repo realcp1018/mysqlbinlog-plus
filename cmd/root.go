@@ -25,6 +25,9 @@ var rootCmd = &cobra.Command{
   # Discover remote binlogs for a historical time range automatically.
   mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00"
 
+  # Generate rollback SQL for an automatically discovered historical range.
+  mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00" --rollback --output rollback.sql
+
   # Parse selected remote binlog files and write original SQL.
   mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
 

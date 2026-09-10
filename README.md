@@ -34,6 +34,9 @@ Examples:
   # Discover remote binlogs for a historical time range automatically.
   mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00"
 
+  # Generate rollback SQL for an automatically discovered historical range.
+  mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00" --rollback --output rollback.sql
+
   # Parse selected remote binlog files and write original SQL.
   mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
 
@@ -84,7 +87,10 @@ When `--mode online` is used with `--binlogs`, mysqlbinlog-plus snapshots the
 current binary log position when the task starts. Earlier selected files are
 read to their end; if the selected files include the snapshot's current binlog,
 reading stops at the snapshot position. This produces a finite, repeatable
-result and does not wait for later events.
+result and does not wait for later events. Selected files are processed in the
+order given; when a time range is configured, list them in chronological order
+because reading stops once the `--to-time` boundary is reached and files listed
+after it are not read.
 
 For normal use, specify `--binlogs` to select remote binlog files by name; local
 binlog file paths are not required. When using `--from-time`, it is also
@@ -92,11 +98,17 @@ recommended to specify the remote binlog files covering the requested range to
 avoid probing historical files and to make the input range explicit. Omitting
 `--binlogs` without a time range
 starts an unbounded live stream, suitable for scenarios that need to continuously
-monitor the current binlog. Omitting `--binlogs` with `--from-time` or `--to-time`
-automatically probes available remote binlogs, selects a conservative historical
-range from the first timestamp-bearing events, and stops at either the startup
-snapshot position or the `--to-time` boundary, whichever comes first, without
-waiting for later events.
+monitor the current binlog. Omitting `--binlogs` with `--from-time`
+automatically probes available remote binlogs and selects a conservative
+historical range from the first timestamp-bearing events. Omitting `--binlogs`
+with `--to-time` starts at the oldest available binlog. Both time-based flows
+stop at either the startup snapshot position or the `--to-time` boundary,
+whichever comes first, without waiting for later events.
+
+When only `--to-time` is specified without `--from-time` or `--binlogs`, the
+automatic range starts at the oldest available binlog and may read every
+available file before reaching the upper boundary. Specify `--from-time` and/or
+`--binlogs` when a narrower range is intended.
 
 Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
@@ -155,4 +167,4 @@ The MySQL user needs privileges for the selected mode:
 - `--rollback` cannot be combined with `--no-primary-key`; rollback must preserve primary key values.
 - Rollback SQL does not include DDL statements. `--rollback --sql-type ddl` is rejected because there is no DML row event to roll back.
 - GTID ranges are not supported yet.
-- Online rollback streaming is intentionally disabled; use `--binlogs --rollback`.
+- Online rollback streaming is intentionally disabled; use `--binlogs --rollback` or combine `--rollback` with a time range for automatic discovery.
