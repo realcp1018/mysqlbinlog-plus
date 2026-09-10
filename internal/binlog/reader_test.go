@@ -57,10 +57,62 @@ func TestUpdateParserStateMarksSchemaUnreliableAfterDDL(t *testing.T) {
 	tracker := &parserState{}
 
 	tracker.update(&replication.BinlogEvent{
-		Event: &replication.QueryEvent{Query: []byte("ALTER TABLE t ADD COLUMN age INT")},
+		Event: &replication.QueryEvent{Schema: []byte("app"), Query: []byte("ALTER TABLE t ADD COLUMN age INT")},
 	}, true)
-	if !tracker.schemaUnreliable {
-		t.Fatal("tracker did not mark schema as unreliable after DDL")
+	if !tracker.schemaUnreliableFor("app", "t") {
+		t.Fatal("tracker did not mark the altered table as unreliable")
+	}
+	if tracker.schemaUnreliableFor("app", "users") {
+		t.Fatal("tracker marked an unrelated table as unreliable")
+	}
+}
+
+// TestUpdateParserStateIgnoresViewDDL verifies that view changes do not invalidate table metadata.
+func TestUpdateParserStateIgnoresViewDDL(t *testing.T) {
+	queries := []string{
+		"CREATE VIEW v AS SELECT id FROM app.t",
+		"ALTER VIEW v AS SELECT id FROM app.t",
+		"DROP VIEW v",
+	}
+	for _, query := range queries {
+		tracker := &parserState{}
+		tracker.update(&replication.BinlogEvent{
+			Event: &replication.QueryEvent{Schema: []byte("app"), Query: []byte(query)},
+		}, true)
+		if tracker.schemaUnreliableFor("app", "t") {
+			t.Errorf("query %q marked table metadata as unreliable", query)
+		}
+	}
+}
+
+// TestUpdateParserStateIgnoresMetadataNeutralDDL verifies that non-column DDL does not trigger fallback.
+func TestUpdateParserStateIgnoresMetadataNeutralDDL(t *testing.T) {
+	queries := []string{
+		"CREATE DATABASE app",
+		"CREATE INDEX idx ON app.t (id)",
+		"DROP DATABASE app",
+		"DROP INDEX idx ON app.t",
+	}
+	for _, query := range queries {
+		tracker := &parserState{}
+		tracker.update(&replication.BinlogEvent{
+			Event: &replication.QueryEvent{Schema: []byte("app"), Query: []byte(query)},
+		}, true)
+		if tracker.schemaUnreliableAll || tracker.schemaUnreliableFor("app", "t") {
+			t.Errorf("query %q marked metadata as unreliable", query)
+		}
+	}
+}
+
+// TestUpdateParserStateFallsBackGloballyForUnscopedDDL preserves safety when parsing fails.
+func TestUpdateParserStateFallsBackGloballyForUnscopedDDL(t *testing.T) {
+	tracker := &parserState{}
+
+	tracker.update(&replication.BinlogEvent{
+		Event: &replication.QueryEvent{Schema: []byte("app"), Query: []byte("ALTER TABLE")},
+	}, true)
+	if !tracker.schemaUnreliableFor("app", "users") {
+		t.Fatal("tracker did not fall back to global unreliability")
 	}
 }
 
@@ -70,7 +122,7 @@ func TestUpdateParserStateKeepsSchemaReliableAfterTruncate(t *testing.T) {
 	tracker.update(&replication.BinlogEvent{
 		Event: &replication.QueryEvent{Query: []byte("TRUNCATE TABLE t")},
 	}, true)
-	if tracker.schemaUnreliable {
+	if tracker.schemaUnreliableFor("app", "t") {
 		t.Fatal("tracker marked schema as unreliable after TRUNCATE TABLE")
 	}
 }
@@ -81,7 +133,7 @@ func TestUpdateParserStateIgnoresDDLBeforeRange(t *testing.T) {
 	tracker.update(&replication.BinlogEvent{
 		Event: &replication.QueryEvent{Query: []byte("ALTER TABLE t ADD COLUMN age INT")},
 	}, false)
-	if tracker.schemaUnreliable {
+	if tracker.schemaUnreliableFor("app", "t") {
 		t.Fatal("tracker marked schema as unreliable before selected range")
 	}
 }

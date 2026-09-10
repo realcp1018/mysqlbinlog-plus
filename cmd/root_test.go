@@ -29,6 +29,26 @@ func TestRootCmdRejectsMutuallyExclusiveFlags(t *testing.T) {
 	}
 }
 
+// TestRootCmdRegistersFlagShorthands verifies the compact options for common filters.
+func TestRootCmdRegistersFlagShorthands(t *testing.T) {
+	initRootOnce.Do(initAll)
+
+	for name, want := range map[string]string{
+		"binlogs":        "B",
+		"list-binlogs":   "L",
+		"rollback":       "R",
+		"table-patterns": "T",
+	} {
+		flag := rootCmd.Flag(name)
+		if flag == nil {
+			t.Fatalf("%s flag is not registered", name)
+		}
+		if flag.Shorthand != want {
+			t.Errorf("%s shorthand = %q, want %q", name, flag.Shorthand, want)
+		}
+	}
+}
+
 func TestRequiresMySQL(t *testing.T) {
 	tests := []struct {
 		name string

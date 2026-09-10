@@ -50,16 +50,16 @@ Flags:
   -P, --port int                    MySQL port (default 3306)
   -u, --user string                 MySQL user (default "root")
   -p, --password string             MySQL password (prompts when omitted)
-      --list-binlogs                list online binlog files and exit
-      --binlogs strings             binlogs to parse
+  -L, --list-binlogs                list online binlog files and exit
+  -B, --binlogs strings             binlogs to parse
       --from-time string            inclusive transaction start time
       --to-time string              exclusive transaction start time
       --from-pos uint32             inclusive transaction start position
       --to-pos uint32               exclusive transaction start position
-      --table-patterns strings      table patterns to include (e.g. app.users,*.orders)
+  -T, --table-patterns strings      table patterns to include (e.g. app.users,*.orders)
       --sql-type strings            SQL event types to include (insert|update|delete|ddl)
       --no-primary-key              omit primary key for INSERT SQL
-      --rollback                    generate rollback SQL for DML row events; DDL statements are not included
+  -R, --rollback                    generate rollback SQL for DML row events; DDL statements are not included
       --rollback-cache-dir string   rollback SQLite cache dir (default ".mysqlbinlog-plus")
   -o, --output string               write output to a file; when chunking is enabled this path is used as the split file base name
       --output-chunk-size int       SQL rows per output chunk; -1 writes a single output file (default -1)

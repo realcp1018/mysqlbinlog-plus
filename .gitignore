@@ -1,6 +1,7 @@
 mysqlbinlog-plus
 mysqlbinlog-plus.exe
 mbp*
+dist/
 .mysqlbinlog-plus/
 *.sql
 *.sqlite

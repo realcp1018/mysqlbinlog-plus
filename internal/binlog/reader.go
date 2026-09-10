@@ -16,6 +16,7 @@ import (
 	"mysqlbinlog-plus/internal/event"
 	"mysqlbinlog-plus/internal/filter"
 	"mysqlbinlog-plus/internal/mysql"
+	"mysqlbinlog-plus/internal/sqlparser"
 )
 
 const binlogStartPos = 4
@@ -275,7 +276,7 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 
 	fallbackColumns := convertColumns(rows.Table)
 	columns := fallbackColumns
-	if r.schemaResolver != nil && !state.schemaUnreliable {
+	if r.schemaResolver != nil && !state.schemaUnreliableFor(schema, table) {
 		resolved, metadataMismatch, err := r.schemaResolver.Resolve(schema, table, fallbackColumns)
 		if err != nil {
 			return nil, err
@@ -372,10 +373,22 @@ type parserState struct {
 	inTransaction bool
 	// transactionBeforeRange reports whether the current transaction began before the selected range.
 	transactionBeforeRange bool
-	// schemaUnreliable reports whether in-range DDL makes current table metadata unsafe to use.
-	schemaUnreliable bool
+	// schemaUnreliableAll reports whether an in-range DDL could not be scoped safely.
+	schemaUnreliableAll bool
+	// schemaUnreliableTables tracks tables whose current metadata may be stale.
+	schemaUnreliableTables map[tableIdentifier]struct{}
+	// schemaUnreliableSchemas tracks schemas affected by database-level DDL.
+	schemaUnreliableSchemas map[string]struct{}
+	// ddlParser parses schema-changing queries once per reader.
+	ddlParser *sqlparser.Parser
 	// metadataMismatchWarned tracks tables already reported for current metadata incompatibility.
 	metadataMismatchWarned map[string]struct{}
+}
+
+// tableIdentifier is the allocation-free key for a schema and table pair.
+type tableIdentifier struct {
+	schema string
+	table  string
 }
 
 // markMetadataMismatchWarned reports whether this is the first metadata mismatch for a table.
@@ -395,8 +408,9 @@ func (s *parserState) markMetadataMismatchWarned(schema, table string) bool {
 func (s *parserState) update(e *replication.BinlogEvent, inRange bool) {
 	switch event := e.Event.(type) {
 	case *replication.QueryEvent:
-		query := strings.ToUpper(strings.TrimSpace(string(event.Query)))
-		switch query {
+		query := strings.TrimSpace(string(event.Query))
+		upperQuery := strings.ToUpper(query)
+		switch upperQuery {
 		case "BEGIN":
 			s.inTransaction = true
 			s.transactionBeforeRange = !inRange
@@ -404,8 +418,9 @@ func (s *parserState) update(e *replication.BinlogEvent, inRange bool) {
 			s.inTransaction = false
 			s.transactionBeforeRange = false
 		default:
-			if inRange && isSchemaChangingQuery(query) && !strings.HasPrefix(query, "TRUNCATE TABLE") {
-				s.schemaUnreliable = true
+			normalizedQuery := strings.ToUpper(sqlparser.NormalizeStatement(query))
+			if inRange && isSchemaChangingQuery(normalizedQuery) {
+				s.markSchemaUnreliable(query, string(event.Schema))
 			}
 		}
 	case *replication.XIDEvent:
@@ -419,6 +434,55 @@ func (s *parserState) update(e *replication.BinlogEvent, inRange bool) {
 	}
 }
 
+// markSchemaUnreliable records the tables affected by one schema-changing query.
+func (s *parserState) markSchemaUnreliable(query, defaultSchema string) {
+	if s.ddlParser == nil {
+		s.ddlParser = sqlparser.New()
+	}
+	targets, err := s.ddlParser.ParseDDLTargets(query, defaultSchema)
+	if err != nil || (len(targets.Tables) == 0 && len(targets.Schemas) == 0) {
+		s.schemaUnreliableAll = true
+		return
+	}
+	if len(targets.Tables) > 0 && s.schemaUnreliableTables == nil {
+		s.schemaUnreliableTables = make(map[tableIdentifier]struct{})
+	}
+	for _, target := range targets.Tables {
+		if target.Schema == "" {
+			s.schemaUnreliableAll = true
+			continue
+		}
+		s.schemaUnreliableTables[tableKey(target.Schema, target.Table)] = struct{}{}
+	}
+	if len(targets.Schemas) > 0 && s.schemaUnreliableSchemas == nil {
+		s.schemaUnreliableSchemas = make(map[string]struct{})
+	}
+	for _, schema := range targets.Schemas {
+		if schema == "" {
+			s.schemaUnreliableAll = true
+			continue
+		}
+		s.schemaUnreliableSchemas[strings.ToLower(schema)] = struct{}{}
+	}
+}
+
+// schemaUnreliableFor reports whether current metadata is unsafe for a table.
+func (s *parserState) schemaUnreliableFor(schema, table string) bool {
+	if s.schemaUnreliableAll {
+		return true
+	}
+	if _, ok := s.schemaUnreliableTables[tableKey(schema, table)]; ok {
+		return true
+	}
+	_, ok := s.schemaUnreliableSchemas[strings.ToLower(schema)]
+	return ok
+}
+
+// tableKey returns the case-insensitive key used for schema and table tracking.
+func tableKey(schema, table string) tableIdentifier {
+	return tableIdentifier{schema: strings.ToLower(schema), table: strings.ToLower(table)}
+}
+
 // stopParseError signals that parsing should stop.
 type stopParseError struct{}
 
@@ -429,53 +493,23 @@ func (e stopParseError) Error() string {
 
 // isSchemaChangingQuery reports whether a query is a supported DDL statement.
 func isSchemaChangingQuery(query string) bool {
-	query = strings.ToUpper(normalizeDDLStatement(query))
+	query = strings.ToUpper(sqlparser.NormalizeStatement(query))
 	if query == "" {
 		return false
 	}
 	for _, prefix := range []string{
 		"ALTER TABLE",
-		"ALTER VIEW",
-		"CREATE DATABASE",
-		"CREATE INDEX",
 		"CREATE TABLE",
 		"CREATE TEMPORARY TABLE",
-		"CREATE VIEW",
-		"DROP DATABASE",
-		"DROP INDEX",
 		"DROP TABLE",
 		"DROP TEMPORARY TABLE",
-		"DROP VIEW",
 		"RENAME TABLE",
-		"TRUNCATE TABLE",
 	} {
 		if strings.HasPrefix(query, prefix) {
 			return true
 		}
 	}
 	return false
-}
-
-// normalizeDDLStatement removes leading SQL comments before DDL prefix matching.
-func normalizeDDLStatement(query string) string {
-	query = strings.TrimSpace(query)
-	for strings.HasPrefix(query, "/*") {
-		end := strings.Index(query, "*/")
-		if end < 0 {
-			return query
-		}
-		comment := query[2:end]
-		query = strings.TrimSpace(query[end+2:])
-		if !strings.HasPrefix(comment, "!") {
-			continue
-		}
-
-		statement := strings.TrimLeft(comment[1:], "0123456789")
-		if statement != "" {
-			return strings.TrimSpace(statement)
-		}
-	}
-	return query
 }
 
 // convertType maps a rows event type to an internal SQL event type.
