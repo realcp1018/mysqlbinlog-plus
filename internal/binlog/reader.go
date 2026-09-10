@@ -17,6 +17,7 @@ import (
 	"mysqlbinlog-plus/internal/filter"
 	"mysqlbinlog-plus/internal/mysql"
 	"mysqlbinlog-plus/internal/sqlparser"
+	"mysqlbinlog-plus/internal/vars"
 )
 
 const binlogStartPos = 4
@@ -393,6 +394,18 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 		return nil, nil
 	}
 
+	if r.cfg.Mode == vars.ModeLocal && len(rows.Table.SignednessBitmap) == 0 && !state.signednessWarningWritten {
+		for _, columnType := range rows.Table.ColumnType {
+			switch columnType {
+			case gomysql.MYSQL_TYPE_TINY, gomysql.MYSQL_TYPE_SHORT, gomysql.MYSQL_TYPE_INT24, gomysql.MYSQL_TYPE_LONG, gomysql.MYSQL_TYPE_LONGLONG:
+				fmt.Fprintln(os.Stderr, "Warning: local binlog integer columns lack signedness metadata; large unsigned integers may be decoded as negative values, producing incorrect SQL. Continuing with decoded values.")
+				state.signednessWarningWritten = true
+			}
+			if state.signednessWarningWritten {
+				break
+			}
+		}
+	}
 	fallbackColumns := convertColumns(rows.Table)
 	columns := fallbackColumns
 	if r.schemaResolver != nil && !state.schemaUnreliableFor(schema, table) {
@@ -514,6 +527,8 @@ func (r *Reader) matchSQLType(typ event.SQLType) bool {
 }
 
 type parserState struct {
+	// signednessWarningWritten prevents repeated local signedness warnings across files.
+	signednessWarningWritten bool
 	// inTransaction reports whether parsing is currently inside a transaction.
 	inTransaction bool
 	// transactionBeforeRange reports whether the current transaction began before the selected range.
