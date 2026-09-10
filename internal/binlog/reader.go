@@ -405,6 +405,7 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 		}
 		columns = resolved
 	}
+	restoreUnsignedRows(rows, columns)
 	rowEvents := make([]RowEvent, 0, len(rows.Rows))
 	switch changeType {
 	case event.Insert:
@@ -666,6 +667,34 @@ func convertType(typ replication.EnumRowsEventType) (event.SQLType, bool) {
 		return event.Delete, true
 	default:
 		return "", false
+	}
+}
+
+// restoreUnsignedRows restores integer values when the binlog lacks signedness metadata.
+func restoreUnsignedRows(rows *replication.RowsEvent, columns []event.Column) {
+	if len(rows.Table.SignednessBitmap) != 0 {
+		return
+	}
+	for _, row := range rows.Rows {
+		for i, value := range row {
+			if i >= len(columns) || !columns[i].Unsigned {
+				continue
+			}
+			switch v := value.(type) {
+			case int8:
+				row[i] = uint8(v)
+			case int16:
+				row[i] = uint16(v)
+			case int32:
+				if rows.Table.ColumnType[i] == gomysql.MYSQL_TYPE_INT24 {
+					row[i] = uint32(v) & 0xffffff
+				} else {
+					row[i] = uint32(v)
+				}
+			case int64:
+				row[i] = uint64(v)
+			}
+		}
 	}
 }
 

@@ -2,14 +2,73 @@ package binlog
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 
 	"mysqlbinlog-plus/internal/config"
 	"mysqlbinlog-plus/internal/event"
 )
+
+// TestRestoreUnsignedRows verifies unsigned boundaries in generated original and rollback SQL.
+func TestRestoreUnsignedRows(t *testing.T) {
+	tests := []struct {
+		name       string
+		columnType byte
+		value      any
+		want       string
+	}{
+		{"tinyint", gomysql.MYSQL_TYPE_TINY, int8(-1), "255"},
+		{"smallint", gomysql.MYSQL_TYPE_SHORT, int16(-1), "65535"},
+		{"mediumint", gomysql.MYSQL_TYPE_INT24, int32(-1), "16777215"},
+		{"int", gomysql.MYSQL_TYPE_LONG, int32(-1), "4294967295"},
+		{"bigint", gomysql.MYSQL_TYPE_LONGLONG, int64(-1), "18446744073709551615"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			columns := []event.Column{{Name: "id", PrimaryKey: true, Unsigned: true}}
+			rows := &replication.RowsEvent{
+				Table: &replication.TableMapEvent{ColumnType: []byte{tt.columnType}},
+				Rows:  [][]any{{tt.value}, {int64(0)}},
+			}
+			restoreUnsignedRows(rows, columns)
+			change := event.RowChange{Schema: "app", Table: "t", Type: event.Update, Cols: columns, Before: rows.Rows[0], After: rows.Rows[1]}
+			original, err := change.ToOriginalSQL(event.SQLOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "UPDATE `app`.`t` SET `id` = 0 WHERE `id` = " + tt.want + ";"; original != want {
+				t.Fatalf("original = %q, want %q", original, want)
+			}
+			rollback, err := change.ToRollbackSQL(event.SQLOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "UPDATE `app`.`t` SET `id` = " + tt.want + " WHERE `id` = 0;"; rollback != want {
+				t.Fatalf("rollback = %q, want %q", rollback, want)
+			}
+		})
+	}
+}
+
+// TestRestoreUnsignedRowsPreservesValues verifies signed values, NULL, and binlog signedness take precedence.
+func TestRestoreUnsignedRowsPreservesValues(t *testing.T) {
+	for _, bitmap := range [][]byte{nil, {0}} {
+		columns := []event.Column{{Unsigned: len(bitmap) > 0}, {Unsigned: true}, {Unsigned: true}}
+		want := []any{int32(-1), nil, uint64(18446744073709551615)}
+		rows := &replication.RowsEvent{
+			Table: &replication.TableMapEvent{SignednessBitmap: bitmap, ColumnType: []byte{gomysql.MYSQL_TYPE_LONG, gomysql.MYSQL_TYPE_LONG, gomysql.MYSQL_TYPE_LONGLONG}},
+			Rows:  [][]any{append([]any(nil), want...)},
+		}
+		restoreUnsignedRows(rows, columns)
+		if !reflect.DeepEqual(rows.Rows[0], want) {
+			t.Fatalf("bitmap %v: values = %v, want %v", bitmap, rows.Rows[0], want)
+		}
+	}
+}
 
 func TestUpdateParserState(t *testing.T) {
 	tracker := &parserState{}

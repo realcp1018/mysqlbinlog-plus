@@ -212,10 +212,10 @@ func (c *Client) showVariable(ctx context.Context, name string) (string, error) 
 	return value, nil
 }
 
-// LoadTableColumns loads column names and primary key flags for a table.
+// LoadTableColumns loads column names, numeric signedness, keys, and charsets.
 func (c *Client) LoadTableColumns(ctx context.Context, schemaName, tableName string) ([]event.Column, error) {
 	rows, err := c.db.QueryContext(ctx, `
-SELECT c.COLUMN_NAME, c.COLUMN_KEY = 'PRI', c.CHARACTER_SET_NAME
+SELECT c.COLUMN_NAME, c.COLUMN_KEY = 'PRI', c.CHARACTER_SET_NAME, c.COLUMN_TYPE
 FROM information_schema.columns c
 WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
 ORDER BY c.ORDINAL_POSITION`, schemaName, tableName)
@@ -227,13 +227,15 @@ ORDER BY c.ORDINAL_POSITION`, schemaName, tableName)
 	var columns []event.Column
 	for rows.Next() {
 		var (
-			col     event.Column
-			charset sql.NullString
+			col        event.Column
+			charset    sql.NullString
+			columnType string
 		)
-		if err := rows.Scan(&col.Name, &col.PrimaryKey, &charset); err != nil {
+		if err := rows.Scan(&col.Name, &col.PrimaryKey, &charset, &columnType); err != nil {
 			return nil, err
 		}
 		col.Charset = charset.String
+		col.Unsigned = strings.HasSuffix(strings.ToLower(columnType), " unsigned") || strings.HasSuffix(strings.ToLower(columnType), " unsigned zerofill")
 		columns = append(columns, col)
 	}
 	if err := rows.Err(); err != nil {

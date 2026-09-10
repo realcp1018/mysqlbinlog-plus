@@ -26,6 +26,8 @@ type Column struct {
 	Name string
 	// PrimaryKey reports whether the column belongs to the primary key.
 	PrimaryKey bool
+	// Unsigned reports whether the column uses an unsigned numeric type.
+	Unsigned bool
 	// GeneratedName reports whether Name is a fallback value rather than table metadata.
 	GeneratedName bool
 	// Charset is the MySQL character set for text values in this column.
