@@ -81,12 +81,16 @@ reading stops at the snapshot position. This produces a finite, repeatable
 result and does not wait for later events.
 
 For normal use, specify `--binlogs` to select remote binlog files by name; local
-binlog file paths are not required. Omitting `--binlogs` without a time range
+binlog file paths are not required. When using `--from-time`, it is also
+recommended to specify the remote binlog files covering the requested range to
+avoid probing historical files and to make the input range explicit. Omitting
+`--binlogs` without a time range
 starts an unbounded live stream, suitable for scenarios that need to continuously
 monitor the current binlog. Omitting `--binlogs` with `--from-time` or `--to-time`
 automatically probes available remote binlogs, selects a conservative historical
-range from the first timestamp-bearing events, and reads through the startup
-snapshot position without waiting for later events.
+range from the first timestamp-bearing events, and stops at either the startup
+snapshot position or the `--to-time` boundary, whichever comes first, without
+waiting for later events.
 
 Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
@@ -139,7 +143,7 @@ The MySQL user needs privileges for the selected mode:
 - Statement-based binlog is not supported.
 - Incomplete row images such as `binlog_row_image=MINIMAL` are not supported for reliable rollback.
 - If real column names cannot be determined, original SQL falls back to generated names such as `column_1`. Rollback SQL rejects generated column names because the output would not be executable against the real table.
-- Online mode is the default. For normal use, specify `--binlogs` to select the remote binlog files by name; local binlog file paths are not required. Omitting `--binlogs` without a time range starts an unbounded live stream; adding `--from-time` or `--to-time` automatically discovers a finite historical range through the startup snapshot position.
+- Online mode is the default. For normal use, specify `--binlogs` to select the remote binlog files by name; local binlog file paths are not required. Omitting `--binlogs` without a time range starts an unbounded live stream; adding `--from-time` or `--to-time` automatically discovers a finite historical range and stops at either the startup snapshot position or the `--to-time` boundary, whichever comes first.
 - Online mode only reads binlog events from MySQL through the replication protocol.
 - Mixed and online modes read column metadata from the current `information_schema.columns`. If DDL is seen in the selected range, later events fall back to binlog metadata instead of trusting the current table definition.
 - `--rollback` cannot be combined with `--no-primary-key`; rollback must preserve primary key values.
