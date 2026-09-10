@@ -32,10 +32,10 @@ var rootCmd = &cobra.Command{
   mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
 
   # Generate rollback SQL from a local binlog file.
-  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --output rollback.sql
 
   # Split rollback SQL into files containing at most 100000 statements each.
-  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000`,
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --output rollback.sql --output-chunk-size 100000`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if version {
 			printVersion()
@@ -109,7 +109,7 @@ func initAll() {
 	rootCmd.Flags().StringSliceVar(&cfg.SQLTypes, "sql-type", nil, "SQL event types to include (insert|update|delete|ddl)")
 	rootCmd.Flags().BoolVar(&cfg.NoPrimaryKey, "no-primary-key", false, "omit primary key for INSERT SQL")
 	rootCmd.Flags().BoolVar(&cfg.Rollback, "rollback", false, "generate rollback SQL for DML row events; DDL statements are not included")
-	rootCmd.Flags().StringVar(&cfg.RollbackCacheDir, "rollback-cache-dir", "", "rollback SQLite cache dir; required with --rollback")
+	rootCmd.Flags().StringVar(&cfg.RollbackCacheDir, "rollback-cache-dir", "", fmt.Sprintf("rollback SQLite cache dir (default %q)", vars.DefaultRollbackCacheDir))
 	rootCmd.Flags().StringVarP(&cfg.Output, "output", "o", "", "write output to a file; when chunking is enabled this path is used as the split file base name")
 	rootCmd.Flags().IntVar(&cfg.OutputChunkSize, "output-chunk-size", -1, "SQL rows per output chunk; -1 writes a single output file")
 	rootCmd.MarkFlagsMutuallyExclusive("rollback", "no-primary-key")

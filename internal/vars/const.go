@@ -16,5 +16,11 @@ const (
 	ModeOnline = "online"
 )
 
+// default paths
+const (
+	// DefaultRollbackCacheDir is the default directory for rollback SQLite cache files.
+	DefaultRollbackCacheDir = ".mysqlbinlog-plus"
+)
+
 // sql event types
 var SQLTypes = []string{"insert", "update", "delete", "ddl"}

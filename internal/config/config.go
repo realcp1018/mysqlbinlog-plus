@@ -11,24 +11,25 @@ import (
 )
 
 type Config struct {
-	Host             string
-	Port             int
-	User             string
-	Password         string
-	Mode             string
-	ListBinlogs      bool
-	Binlogs          []string
-	FromTime         string
-	ToTime           string
-	FromPos          uint32
-	ToPos            uint32
-	TablePatterns    []string
-	SQLTypes         []string
-	Rollback         bool
-	NoPrimaryKey     bool
-	Output           string
-	OutputChunkSize  int
-	RollbackCacheDir string
+	Host                      string
+	Port                      int
+	User                      string
+	Password                  string
+	Mode                      string
+	ListBinlogs               bool
+	Binlogs                   []string
+	FromTime                  string
+	ToTime                    string
+	FromPos                   uint32
+	ToPos                     uint32
+	TablePatterns             []string
+	SQLTypes                  []string
+	Rollback                  bool
+	NoPrimaryKey              bool
+	Output                    string
+	OutputChunkSize           int
+	RollbackCacheDir          string
+	RollbackCacheDirIsDefault bool
 }
 
 // ValidateAndNormalize validates user options and normalizes repeatable flags.
@@ -59,8 +60,10 @@ func (cfg *Config) ValidateAndNormalize() error {
 	if cfg.OutputChunkSize > 0 && cfg.Output == "" {
 		return fmt.Errorf("--output-chunk-size requires --output")
 	}
+	cfg.RollbackCacheDirIsDefault = false
 	if cfg.Rollback && cfg.RollbackCacheDir == "" {
-		return fmt.Errorf("--rollback requires --rollback-cache-dir; make sure you have enough disk space for cache")
+		cfg.RollbackCacheDir = vars.DefaultRollbackCacheDir
+		cfg.RollbackCacheDirIsDefault = true
 	}
 	if cfg.Rollback && cfg.Output != "" {
 		if err := cfg.checkRollbackOutput(); err != nil {

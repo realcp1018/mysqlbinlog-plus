@@ -82,6 +82,9 @@ func RunOriginal(cfg config.Config) error {
 func RunRollback(cfg config.Config) error {
 	ctx := context.Background()
 	rollbackLogger.Println("[INFO] Rollback started.")
+	if cfg.RollbackCacheDirIsDefault {
+		rollbackLogger.Printf("[WARN] Using default rollback cache dir %q. The rollback may fail if the cache runs out of disk space.", cfg.RollbackCacheDir)
+	}
 	store := spool.NewStore(cfg.RollbackCacheDir)
 	if err := store.Init(); err != nil {
 		return err

@@ -103,17 +103,19 @@ func TestValidateAndNormalizeRejectsChunkSizeWithoutOutput(t *testing.T) {
 	}
 }
 
-func TestValidateAndNormalizeRollbackRequiresCacheDir(t *testing.T) {
+func TestValidateAndNormalizeDefaultsRollbackCacheDir(t *testing.T) {
 	cfg := validConfig(func(cfg *Config) {
 		cfg.Rollback = true
 		cfg.RollbackCacheDir = ""
 	})
-	err := cfg.ValidateAndNormalize()
-	if err == nil || !strings.Contains(err.Error(), "--rollback requires --rollback-cache-dir") {
-		t.Fatalf("error = %v, want rollback cache dir error", err)
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatalf("ValidateAndNormalize returned error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "make sure you have enough disk space for cache") {
-		t.Fatalf("error = %v, want disk space hint", err)
+	if cfg.RollbackCacheDir != vars.DefaultRollbackCacheDir {
+		t.Fatalf("RollbackCacheDir = %q, want %q", cfg.RollbackCacheDir, vars.DefaultRollbackCacheDir)
+	}
+	if !cfg.RollbackCacheDirIsDefault {
+		t.Fatal("RollbackCacheDirIsDefault = false, want true")
 	}
 }
 

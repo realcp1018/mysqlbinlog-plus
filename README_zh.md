@@ -39,10 +39,10 @@ Examples:
   mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
 
   # Generate rollback SQL from a local binlog file.
-  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --output rollback.sql
 
   # Split rollback SQL into files containing at most 100000 statements each.
-  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --output rollback.sql --output-chunk-size 100000
 
 Flags:
       --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "online")
@@ -60,7 +60,7 @@ Flags:
       --sql-type strings            SQL event types to include (insert|update|delete|ddl)
       --no-primary-key              omit primary key for INSERT SQL
       --rollback                    generate rollback SQL for DML row events; DDL statements are not included
-      --rollback-cache-dir string   rollback SQLite cache dir; required with --rollback
+      --rollback-cache-dir string   rollback SQLite cache dir (default ".mysqlbinlog-plus")
   -o, --output string               write output to a file; when chunking is enabled this path is used as the split file base name
       --output-chunk-size int       SQL rows per output chunk; -1 writes a single output file (default -1)
   -V, --version                     show version of mbp
@@ -81,7 +81,9 @@ Flags:
 
 对于原始 SQL，`mysqlbinlog-plus` 会一边解析 binlog event，一边立即写出对应的 SQL。设置 `--output` 和 `--output-chunk-size` 后，当前分块达到上限时才切换到下一个输出文件，语句顺序保持不变。
 
-回滚 SQL 必须按 event 的逆序输出，因此采用另一条处理链：解析时会生成回滚 SQL，并存入 `--rollback-cache-dir` 指定的 SQLite 缓存。所有指定 binlog 都解析完成后，`mysqlbinlog-plus` 才会从 SQLite 倒序读取这些回滚 SQL 并写出最终结果。启用分块输出时，各个独立的回滚分块会从 SQLite 并发读取并写入。
+回滚 SQL 必须按 event 的逆序输出，因此采用另一条处理链：解析时会生成回滚 SQL，并存入 `--rollback-cache-dir` 指定的 SQLite 缓存（默认为 `.mysqlbinlog-plus`）。所有指定 binlog 都解析完成后，`mysqlbinlog-plus` 才会从 SQLite 倒序读取这些回滚 SQL 并写出最终结果。启用分块输出时，各个独立的回滚分块会从 SQLite 并发读取并写入。
+
+未显式指定 `--rollback-cache-dir` 时，`mysqlbinlog-plus` 会使用默认目录 `.mysqlbinlog-plus`，并打印一条 warning 日志。缓存空间不足可能导致磁盘爆满和回滚失败。
 
 ## MySQL 要求
 

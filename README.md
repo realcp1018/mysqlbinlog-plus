@@ -41,10 +41,10 @@ Examples:
   mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
 
   # Generate rollback SQL from a local binlog file.
-  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --output rollback.sql
 
   # Split rollback SQL into files containing at most 100000 statements each.
-  mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000
+  mbp --mode local --binlogs mysql-bin.000010 --rollback --output rollback.sql --output-chunk-size 100000
 
 Flags:
       --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "online")
@@ -62,7 +62,7 @@ Flags:
       --sql-type strings            SQL event types to include (insert|update|delete|ddl)
       --no-primary-key              omit primary key for INSERT SQL
       --rollback                    generate rollback SQL for DML row events; DDL statements are not included
-      --rollback-cache-dir string   rollback SQLite cache dir; required with --rollback
+      --rollback-cache-dir string   rollback SQLite cache dir (default ".mysqlbinlog-plus")
   -o, --output string               write output to a file; when chunking is enabled this path is used as the split file base name
       --output-chunk-size int       SQL rows per output chunk; -1 writes a single output file (default -1)
   -V, --version                     show version of mbp
@@ -97,10 +97,14 @@ preserving statement order.
 
 Rollback SQL must be output in reverse event order, so it uses a separate flow.
 While parsing, mysqlbinlog-plus generates rollback SQL and stores it in the
-SQLite cache specified by `--rollback-cache-dir`. After all selected binlogs
+SQLite cache specified by `--rollback-cache-dir` (default `.mysqlbinlog-plus`). After all selected binlogs
 have been parsed, it reads the cached rollback SQL in reverse order and writes
 the final output. With chunked output enabled, independent rollback chunks are
 read from SQLite and written concurrently.
+
+When `--rollback-cache-dir` is omitted, mysqlbinlog-plus uses the default
+`.mysqlbinlog-plus` directory and logs a warning. The rollback may fail if the
+cache runs out of disk space.
 
 ## MySQL Requirements
 
