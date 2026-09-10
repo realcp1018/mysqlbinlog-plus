@@ -21,6 +21,8 @@ import (
 
 const binlogStartPos = 4
 
+const remoteBinlogProbeTimeout = 5 * time.Second
+
 var goMySQLLogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 type RowEvent struct {
@@ -41,6 +43,20 @@ type Reader struct {
 // NewReader creates a binlog reader with an optional MySQL schema resolver.
 func NewReader(cfg config.Config, schemaResolver *mysql.SchemaResolver) *Reader {
 	return &Reader{cfg: cfg, schemaResolver: schemaResolver}
+}
+
+// newOnlineSyncer creates a replication client for the configured MySQL server.
+func (r *Reader) newOnlineSyncer(serverID uint32) *replication.BinlogSyncer {
+	return replication.NewBinlogSyncer(replication.BinlogSyncerConfig{
+		ServerID:  serverID,
+		Flavor:    "mysql",
+		Host:      r.cfg.Host,
+		Port:      uint16(r.cfg.Port),
+		User:      r.cfg.User,
+		Password:  r.cfg.Password,
+		ParseTime: true,
+		Logger:    goMySQLLogger,
+	})
 }
 
 // ParseBinlogs parses configured local binlogs and handles row events.
@@ -91,16 +107,7 @@ func (r *Reader) StreamOnline(ctx context.Context, position mysql.BinlogPosition
 		return err
 	}
 
-	syncer := replication.NewBinlogSyncer(replication.BinlogSyncerConfig{
-		ServerID:  serverID,
-		Flavor:    "mysql",
-		Host:      r.cfg.Host,
-		Port:      uint16(r.cfg.Port),
-		User:      r.cfg.User,
-		Password:  r.cfg.Password,
-		ParseTime: true,
-		Logger:    goMySQLLogger,
-	})
+	syncer := r.newOnlineSyncer(serverID)
 	defer syncer.Close()
 
 	streamer, err := syncer.StartSync(gomysql.Position{Name: position.File, Pos: position.Pos})
@@ -134,6 +141,106 @@ func (r *Reader) StreamOnline(ctx context.Context, position mysql.BinlogPosition
 	}
 }
 
+// DiscoverRemoteBinlogs selects a conservative online binlog range for a time query.
+func (r *Reader) DiscoverRemoteBinlogs(ctx context.Context, serverID uint32, logs []mysql.BinaryLog, snapshot mysql.BinlogPosition) ([]string, error) {
+	fromTime, toTime, err := r.cfg.TimeRange()
+	if err != nil {
+		return nil, err
+	}
+	if fromTime == nil && toTime == nil {
+		return nil, fmt.Errorf("time range is required for automatic binlog discovery")
+	}
+
+	snapshotIndex := -1
+	for i, log := range logs {
+		if log.Name == snapshot.File {
+			snapshotIndex = i
+			break
+		}
+	}
+	if snapshotIndex < 0 {
+		return nil, fmt.Errorf("current binlog %q is not present in SHOW BINARY LOGS", snapshot.File)
+	}
+
+	var firstTimes []time.Time
+	if fromTime != nil {
+		for i := snapshotIndex; i >= 0; i-- {
+			firstTime, err := r.firstRemoteEventTime(ctx, serverID, logs[i].Name)
+			if err != nil {
+				return nil, fmt.Errorf("probe online binlog %q: %w", logs[i].Name, err)
+			}
+			firstTimes = append(firstTimes, firstTime)
+			if !firstTime.IsZero() && !firstTime.After(*fromTime) {
+				break
+			}
+		}
+	}
+
+	startIndex := selectRemoteBinlogStartFromLatest(firstTimes, snapshotIndex, fromTime)
+	selected := make([]string, 0, snapshotIndex-startIndex+1)
+	for i := startIndex; i <= snapshotIndex; i++ {
+		selected = append(selected, logs[i].Name)
+	}
+	return selected, nil
+}
+
+// firstRemoteEventTime reads the first timestamp-bearing event in one remote binlog.
+func (r *Reader) firstRemoteEventTime(ctx context.Context, serverID uint32, file string) (time.Time, error) {
+	syncer := r.newOnlineSyncer(serverID)
+	defer syncer.Close()
+
+	streamer, err := syncer.StartSync(gomysql.Position{Name: file, Pos: binlogStartPos})
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, remoteBinlogProbeTimeout)
+	defer cancel()
+	for {
+		e, err := streamer.GetEvent(probeCtx)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+				return time.Time{}, nil
+			}
+			return time.Time{}, err
+		}
+		if e == nil || e.Header == nil {
+			return time.Time{}, fmt.Errorf("binlog event is missing header")
+		}
+		if _, ok := e.Event.(*replication.RotateEvent); ok {
+			// MySQL sends a fake rotate event when a replication stream starts.
+			if e.Header.Timestamp == 0 || e.Header.LogPos == 0 {
+				continue
+			}
+			return time.Time{}, nil
+		}
+		if eventTime, ok := remoteEventTimestamp(e); ok {
+			return eventTime, nil
+		}
+	}
+}
+
+// remoteEventTimestamp returns the first usable timestamp from a binlog event.
+func remoteEventTimestamp(e *replication.BinlogEvent) (time.Time, bool) {
+	if format, ok := e.Event.(*replication.FormatDescriptionEvent); ok {
+		timestamp := e.Header.Timestamp
+		if timestamp == 0 {
+			timestamp = format.CreateTimestamp
+		}
+		if timestamp == 0 {
+			return time.Time{}, false
+		}
+		return time.Unix(int64(timestamp), 0), true
+	}
+	if _, ok := e.Event.(*replication.PreviousGTIDsEvent); ok {
+		return time.Time{}, false
+	}
+	if e.Header.Timestamp == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(int64(e.Header.Timestamp), 0), true
+}
+
 // FetchRemoteBinlogs reads configured online binlogs through the supplied master status snapshot.
 func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, snapshot mysql.BinlogPosition, rowEventHandler func(RowEvent) error) error {
 	fromTime, toTime, err := r.cfg.TimeRange()
@@ -143,16 +250,7 @@ func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, snapsh
 
 	state := &parserState{}
 	for _, file := range r.cfg.Binlogs {
-		syncer := replication.NewBinlogSyncer(replication.BinlogSyncerConfig{
-			ServerID:  serverID,
-			Flavor:    "mysql",
-			Host:      r.cfg.Host,
-			Port:      uint16(r.cfg.Port),
-			User:      r.cfg.User,
-			Password:  r.cfg.Password,
-			ParseTime: true,
-			Logger:    goMySQLLogger,
-		})
+		syncer := r.newOnlineSyncer(serverID)
 		startPos := uint32(binlogStartPos)
 		endPos := uint32(0)
 		if file == snapshot.File {
@@ -168,6 +266,27 @@ func (r *Reader) FetchRemoteBinlogs(ctx context.Context, serverID uint32, snapsh
 		}
 	}
 	return nil
+}
+
+// selectRemoteBinlogStartFromLatest returns a conservative file index for a lower time bound.
+func selectRemoteBinlogStartFromLatest(firstTimes []time.Time, snapshotIndex int, fromTime *time.Time) int {
+	if len(firstTimes) == 0 || fromTime == nil {
+		return 0
+	}
+
+	for offset, firstTime := range firstTimes {
+		if firstTime.IsZero() {
+			continue
+		}
+		if !firstTime.After(*fromTime) {
+			candidate := snapshotIndex - offset
+			if candidate > 0 {
+				candidate--
+			}
+			return candidate
+		}
+	}
+	return 0
 }
 
 // fetchRemoteBinlog streams one online binlog until rotation, snapshot, or range end.

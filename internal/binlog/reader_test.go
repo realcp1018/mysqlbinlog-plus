@@ -301,6 +301,59 @@ func TestProcessEventCompletesTransactionBeyondToPos(t *testing.T) {
 	}
 }
 
+func TestSelectRemoteBinlogStartFromLatestUsesAdjacentFileBoundary(t *testing.T) {
+	base := time.Unix(100, 0)
+	from := base.Add(90 * time.Minute)
+	firstTimes := []time.Time{
+		base.Add(120 * time.Minute),
+		base.Add(60 * time.Minute),
+		base,
+	}
+
+	if got, want := selectRemoteBinlogStartFromLatest(firstTimes, 2, &from), 0; got != want {
+		t.Fatalf("start index = %d, want %d", got, want)
+	}
+}
+
+func TestSelectRemoteBinlogStartFromLatestIncludesEarlierFileForSafety(t *testing.T) {
+	base := time.Unix(100, 0)
+	from := base.Add(150 * time.Minute)
+	firstTimes := []time.Time{
+		base.Add(180 * time.Minute),
+		base.Add(120 * time.Minute),
+		base.Add(60 * time.Minute),
+		base,
+	}
+
+	if got, want := selectRemoteBinlogStartFromLatest(firstTimes, 3, &from), 1; got != want {
+		t.Fatalf("start index = %d, want %d", got, want)
+	}
+}
+
+func TestSelectRemoteBinlogStartFromLatestHandlesFirstFileAfterFromTime(t *testing.T) {
+	from := time.Unix(100, 0)
+	firstTimes := []time.Time{from.Add(time.Minute)}
+
+	if got, want := selectRemoteBinlogStartFromLatest(firstTimes, 0, &from), 0; got != want {
+		t.Fatalf("start index = %d, want %d", got, want)
+	}
+}
+
+func TestRemoteEventTimestampUsesFormatDescriptionTime(t *testing.T) {
+	e := &replication.BinlogEvent{
+		Header: &replication.EventHeader{Timestamp: 0},
+		Event:  &replication.FormatDescriptionEvent{CreateTimestamp: 123},
+	}
+
+	got, ok := remoteEventTimestamp(e)
+	if !ok {
+		t.Fatal("remoteEventTimestamp returned no timestamp")
+	}
+	if want := time.Unix(123, 0); got != want {
+		t.Fatalf("event time = %v, want %v", got, want)
+	}
+}
+
 func ddlBinlogEvent(query string) *replication.BinlogEvent {
 	return &replication.BinlogEvent{
 		Header: &replication.EventHeader{

@@ -219,6 +219,16 @@ func TestValidateAndNormalizeRequiresBinlogsOutsideOnlineMode(t *testing.T) {
 	}
 }
 
+func TestValidateAndNormalizeAllowsOnlineTimeRangeWithoutBinlogs(t *testing.T) {
+	cfg := validConfig(func(cfg *Config) {
+		cfg.Binlogs = nil
+		cfg.FromTime = "2026-06-30 10:00:00"
+	})
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatalf("ValidateAndNormalize returned error: %v", err)
+	}
+}
+
 func TestValidateAndNormalizeRejectsOnlineStreamingRollback(t *testing.T) {
 	cfg := validConfig(func(cfg *Config) {
 		cfg.Mode = vars.ModeOnline

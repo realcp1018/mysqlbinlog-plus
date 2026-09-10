@@ -29,6 +29,9 @@ Examples:
   # 从当前 online binlog 流式读取新事件。
   mbp --mode online --host 127.0.0.1 --user root
 
+  # 自动发现指定时间范围对应的远程 binlog。
+  mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00"
+
   # Parse selected remote binlog files and write original SQL.
   mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
 
@@ -73,7 +76,7 @@ Flags:
 较早的指定文件会读取到文件结束；若指定文件包含快照时的当前 binlog，则读取到
 该快照位置后结束。因此结果是有限且可重复的，不会等待后续 event。
 
-正常使用时，建议通过 `--binlogs` 明确指定远程 binlog 文件名，不需要本地 binlog 文件路径。省略 `--binlogs` 会进入无界的实时流式读取，适用于需要持续监听当前 binlog 的场景。
+正常使用时，建议通过 `--binlogs` 明确指定远程 binlog 文件名，不需要本地 binlog 文件路径。未指定 `--binlogs` 且未指定时间范围时，会进入无界的实时流式读取，适用于需要持续监听当前 binlog 的场景。未指定 `--binlogs` 但指定了 `--from-time` 或 `--to-time` 时，会探测远程 binlog 中首个有效时间戳 event，自动选择保守的历史文件范围，并读取到任务启动时的快照位点后结束，不等待后续 event。
 
 时间和位置范围按事务起始事件筛选。下界为包含边界，上界为排除边界；只要事务被选中，即使其提交位置或时间超过上界，仍会完整输出该事务。
 
@@ -112,7 +115,7 @@ MySQL 用户需要与所选模式对应的权限：
 - 不支持 statement 格式的 binlog。
 - 不完整行镜像（如 `binlog_row_image=MINIMAL`）无法可靠生成回滚 SQL。
 - 无法确定真实字段名时，原始 SQL 会回退为 `column_1` 等生成名称；回滚 SQL 会拒绝使用生成字段名，因为生成的语句无法在真实表结构上执行。
-- `online` 是默认模式：正常使用时建议通过 `--binlogs` 指定远程 binlog 文件名，不需要本地 binlog 文件路径。省略 `--binlogs` 会进入无界实时流式读取，适用于需要持续监听当前 binlog 的场景。
+- `online` 是默认模式：正常使用时建议通过 `--binlogs` 指定远程 binlog 文件名，不需要本地 binlog 文件路径。未指定 `--binlogs` 且未指定时间范围时进入无界实时流式读取；指定 `--from-time` 或 `--to-time` 时会自动发现有限的历史范围，并读取到启动快照位点。
 - `online` 模式只通过复制协议读取 MySQL binlog。
 - `mixed` 和 `online` 模式读取当前 `information_schema.columns` 的表元数据。如果在选中范围内遇到 DDL，后续事件会回退为 binlog 元数据，避免信任可能已经变化的当前表定义。
 - `--rollback` 不能与 `--no-primary-key` 一起使用；回滚 SQL 必须保留主键值。

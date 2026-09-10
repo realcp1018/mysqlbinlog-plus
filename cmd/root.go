@@ -22,6 +22,9 @@ var rootCmd = &cobra.Command{
 	Example: `  # Stream new events from the current online binlog.
   mbp --mode online --host 127.0.0.1 --user root
 
+  # Discover remote binlogs for a historical time range automatically.
+  mbp --mode online --from-time "2026-09-09 10:00:00" --to-time "2026-09-10 10:00:00"
+
   # Parse selected remote binlog files and write original SQL.
   mbp --mode online --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
 
@@ -54,13 +57,14 @@ var rootCmd = &cobra.Command{
 		}
 		// Choose execution branch from config:
 		// - list online binlogs (mode=online)
-		// - stream online binlog events (mode=online)
+		// - stream online binlog events (mode=online without a time range)
+		// - discover and parse an online time range (mode=online without binlogs)
 		// - parse selected binlogs and generate rollback SQL (mode=online/mixed/local)
 		// - parse selected binlogs and generate original SQL (mode=online/mixed/local)
 		if cfg.ListBinlogs {
 			return app.ListOnlineBinlogs(cfg)
 		}
-		if len(cfg.Binlogs) == 0 {
+		if len(cfg.Binlogs) == 0 && cfg.FromTime == "" && cfg.ToTime == "" {
 			return app.StreamOnline(cfg)
 		}
 		if cfg.Rollback {

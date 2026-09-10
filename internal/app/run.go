@@ -48,11 +48,22 @@ func RunOriginal(cfg config.Config) error {
 		if err != nil {
 			return err
 		}
-		if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
+		serverID := mysql.GenerateServerID()
+		if len(cfg.Binlogs) == 0 {
+			logs, err := client.ShowBinaryLogs(ctx)
+			if err != nil {
+				return err
+			}
+			reader := binlog.NewReader(cfg, mysql.NewSchemaResolver(client))
+			cfg.Binlogs, err = reader.DiscoverRemoteBinlogs(ctx, serverID, logs, snapshot)
+			if err != nil {
+				return err
+			}
+		} else if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
 			return err
 		}
 		reader := binlog.NewReader(cfg, mysql.NewSchemaResolver(client))
-		return reader.FetchRemoteBinlogs(ctx, mysql.GenerateServerID(), snapshot, rowEventHandler)
+		return reader.FetchRemoteBinlogs(ctx, serverID, snapshot, rowEventHandler)
 	case vars.ModeMixed:
 		client, err := mysql.Open(cfg)
 		if err != nil {
