@@ -66,7 +66,7 @@ Flags:
       --from-pos uint32             inclusive transaction start position
       --to-pos uint32               exclusive transaction start position
   -T, --table-patterns strings      table patterns to include (e.g. app.users,*.orders)
-      --sql-type strings            SQL event types to include (insert|update|delete|ddl)
+      --sql-type strings            SQL event types to include (insert|update|delete|ddl; e.g. insert,update)
       --no-primary-key              omit primary key for INSERT SQL
   -R, --rollback                    generate rollback SQL for DML row events; DDL statements are not included
       --rollback-cache-dir string   rollback SQLite cache dir (default ".mysqlbinlog-plus")

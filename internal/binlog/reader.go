@@ -428,7 +428,7 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 	return rowEvents, nil
 }
 
-// ddlEvent converts schema-changing query events into DDL output events.
+// ddlEvent converts supported DDL query events into output events.
 func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.Time, e *replication.BinlogEvent, state *parserState) (RowEvent, bool) {
 	if r.cfg.Rollback || !r.matchSQLType(event.DDL) {
 		return RowEvent{}, false
@@ -438,24 +438,21 @@ func (r *Reader) ddlEvent(file string, startPos, endPos uint32, eventTime time.T
 		return RowEvent{}, false
 	}
 	query := strings.TrimSpace(string(queryEvent.Query))
-	if !isSchemaChangingQuery(strings.ToUpper(query)) {
+	if state.ddlParser == nil {
+		state.ddlParser = sqlparser.New()
+	}
+	targets, err := state.ddlParser.ParseDDLTargets(query, string(queryEvent.Schema))
+	if err != nil {
 		return RowEvent{}, false
 	}
 	outputQuery := query
 	if queryEvent.Schema != nil && len(queryEvent.Schema) > 0 {
-		if state.ddlParser == nil {
-			state.ddlParser = sqlparser.New()
-		}
 		if qualified, err := state.ddlParser.QualifyDDL(query, string(queryEvent.Schema)); err == nil {
 			outputQuery = qualified
 		}
 	}
 	if len(r.cfg.TablePatterns) > 0 {
-		if state.ddlParser == nil {
-			state.ddlParser = sqlparser.New()
-		}
-		targets, err := state.ddlParser.ParseDDLTargets(query, string(queryEvent.Schema))
-		if err != nil || len(targets.Tables) == 0 {
+		if len(targets.Tables) == 0 {
 			return RowEvent{}, false
 		}
 		matched := false
@@ -565,8 +562,7 @@ func (s *parserState) update(e *replication.BinlogEvent, inRange bool) {
 			s.inTransaction = false
 			s.transactionBeforeRange = false
 		default:
-			normalizedQuery := strings.ToUpper(sqlparser.NormalizeStatement(query))
-			if inRange && isSchemaChangingQuery(normalizedQuery) {
+			if inRange && isSchemaChangingQuery(query) {
 				s.markSchemaUnreliable(query, string(event.Schema))
 			}
 		}

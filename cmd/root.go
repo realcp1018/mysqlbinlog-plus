@@ -116,7 +116,7 @@ func initAll() {
 	rootCmd.Flags().Uint32Var(&cfg.FromPos, "from-pos", 0, "inclusive transaction start position")
 	rootCmd.Flags().Uint32Var(&cfg.ToPos, "to-pos", 0, "exclusive transaction start position")
 	rootCmd.Flags().StringSliceVarP(&cfg.TablePatterns, "table-patterns", "T", nil, "table patterns to include (e.g. app.users,*.orders)")
-	rootCmd.Flags().StringSliceVar(&cfg.SQLTypes, "sql-type", nil, "SQL event types to include (insert|update|delete|ddl)")
+	rootCmd.Flags().StringSliceVar(&cfg.SQLTypes, "sql-type", nil, "SQL event types to include (insert|update|delete|ddl; e.g. insert,update)")
 	rootCmd.Flags().BoolVar(&cfg.NoPrimaryKey, "no-primary-key", false, "omit primary key for INSERT SQL")
 	rootCmd.Flags().BoolVarP(&cfg.Rollback, "rollback", "R", false, "generate rollback SQL for DML row events; DDL statements are not included")
 	rootCmd.Flags().StringVar(&cfg.RollbackCacheDir, "rollback-cache-dir", "", fmt.Sprintf("rollback SQLite cache dir (default %q)", vars.DefaultRollbackCacheDir))

@@ -173,6 +173,35 @@ func TestConvertEmitsDDLByDefault(t *testing.T) {
 	}
 }
 
+// TestConvertEmitsMetadataNeutralDDL verifies that DDL output is independent of metadata fallback rules.
+func TestConvertEmitsMetadataNeutralDDL(t *testing.T) {
+	reader := NewReader(config.Config{SQLTypes: []string{string(event.DDL)}}, nil)
+	e := ddlBinlogEvent("TRUNCATE TABLE t")
+	e.Event.(*replication.QueryEvent).Schema = []byte("app")
+	events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+	if err != nil {
+		t.Fatalf("convert returned error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("convert returned %d events, want 1", len(events))
+	}
+	if got, want := events[0].DDLSQLText, "TRUNCATE TABLE `app`.`t`;"; got != want {
+		t.Fatalf("DDLSQLText = %q, want %q", got, want)
+	}
+}
+
+// TestConvertSkipsNonDDLQuery verifies that SQL type matching does not turn transaction commands into DDL output.
+func TestConvertSkipsNonDDLQuery(t *testing.T) {
+	reader := NewReader(config.Config{SQLTypes: []string{string(event.DDL)}}, nil)
+	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("BEGIN"), nil, nil, &parserState{})
+	if err != nil {
+		t.Fatalf("convert returned error: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("convert returned %d events, want 0", len(events))
+	}
+}
+
 // TestConvertKeepsDDLSchema verifies that qualified table names are preserved in DDL output.
 func TestConvertKeepsDDLSchema(t *testing.T) {
 	reader := NewReader(config.Config{}, nil)

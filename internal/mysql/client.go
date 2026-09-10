@@ -11,7 +11,6 @@ import (
 
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/go-sql-driver/mysql"
 
 	"mysqlbinlog-plus/internal/config"
 	"mysqlbinlog-plus/internal/event"

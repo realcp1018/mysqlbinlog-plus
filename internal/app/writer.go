@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -108,14 +109,20 @@ func (w *sqlWriter) writeOutputPreamble() error {
 	if w.file != nil {
 		output = w.file
 	}
-	if _, err := fmt.Fprintln(output, "SET NAMES utf8mb4;"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(output, "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');"); err != nil {
+	if err := writeSQLPreamble(output); err != nil {
 		return err
 	}
 	w.charsetWritten = true
 	return nil
+}
+
+// writeSQLPreamble writes the session settings required by generated SQL.
+func writeSQLPreamble(output io.Writer) error {
+	if _, err := fmt.Fprintln(output, "SET NAMES utf8mb4;"); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(output, "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');")
+	return err
 }
 
 // Close closes the current output file if one is open.

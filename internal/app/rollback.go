@@ -224,10 +224,7 @@ func writeRollbackChunk(ctx context.Context, store *spool.Store, output string, 
 	for _, part := range plan.parts {
 		if err := store.ReadReverseRange(ctx, part.binlogFile, part.lowID, part.highID, func(record spool.Record) error {
 			if !wroteSQL {
-				if _, err := fmt.Fprintln(file, "SET NAMES utf8mb4;"); err != nil {
-					return err
-				}
-				if _, err := fmt.Fprintln(file, "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');"); err != nil {
+				if err := writeSQLPreamble(file); err != nil {
 					return err
 				}
 				wroteSQL = true
