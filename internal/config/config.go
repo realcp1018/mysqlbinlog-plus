@@ -37,7 +37,7 @@ func (cfg *Config) ValidateAndNormalize() error {
 		return fmt.Errorf("--port invalid value")
 	}
 	if cfg.Mode == "" {
-		cfg.Mode = vars.ModeMixed
+		cfg.Mode = vars.ModeOnline
 	}
 	if cfg.Mode != vars.ModeLocal && cfg.Mode != vars.ModeMixed && cfg.Mode != vars.ModeOnline {
 		return fmt.Errorf("--mode must be %q, %q, or %q", vars.ModeLocal, vars.ModeMixed, vars.ModeOnline)

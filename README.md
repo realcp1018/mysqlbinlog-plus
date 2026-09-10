@@ -47,7 +47,7 @@ Examples:
   mbp --mode local --binlogs mysql-bin.000010 --rollback --rollback-cache-dir .mysqlbinlog-plus --output rollback.sql --output-chunk-size 100000
 
 Flags:
-      --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "mixed")
+      --mode string                 binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online) (default "online")
   -h, --host string                 MySQL host (default "127.0.0.1")
   -P, --port int                    MySQL port (default 3306)
   -u, --user string                 MySQL user (default "root")
@@ -75,8 +75,12 @@ When `--mode online` is used with `--binlogs`, mysqlbinlog-plus snapshots the
 current binary log position when the task starts. Earlier selected files are
 read to their end; if the selected files include the snapshot's current binlog,
 reading stops at the snapshot position. This produces a finite, repeatable
-result and does not wait for later events. Online mode without `--binlogs`
-remains a live stream.
+result and does not wait for later events.
+
+For normal use, specify `--binlogs` to select remote binlog files by name; local
+binlog file paths are not required. Omitting `--binlogs` starts an unbounded live
+stream, suitable for scenarios that need to continuously monitor the current
+binlog.
 
 Time and position ranges select transactions by their start event. The lower
 bound is inclusive and the upper bound is exclusive; a selected transaction is
@@ -125,7 +129,7 @@ The MySQL user needs privileges for the selected mode:
 - Statement-based binlog is not supported.
 - Incomplete row images such as `binlog_row_image=MINIMAL` are not supported for reliable rollback.
 - If real column names cannot be determined, original SQL falls back to generated names such as `column_1`. Rollback SQL rejects generated column names because the output would not be executable against the real table.
-- Mixed mode is the default. It parses local binlog files and reads column metadata from MySQL.
+- Online mode is the default. For normal use, specify `--binlogs` to select the remote binlog files by name; local binlog file paths are not required. Omitting `--binlogs` starts an unbounded live stream for scenarios that need to continuously monitor the current binlog.
 - Online mode only reads binlog events from MySQL through the replication protocol.
 - Mixed and online modes read column metadata from the current `information_schema.columns`. If DDL is seen in the selected range, later events fall back to binlog metadata instead of trusting the current table definition.
 - `--rollback` cannot be combined with `--no-primary-key`; rollback must preserve primary key values.

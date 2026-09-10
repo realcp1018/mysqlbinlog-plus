@@ -229,13 +229,13 @@ func TestValidateAndNormalizeRejectsOnlineStreamingRollback(t *testing.T) {
 	}
 }
 
-func TestValidateAndNormalizeDefaultsModeToMixed(t *testing.T) {
+func TestValidateAndNormalizeDefaultsModeToOnline(t *testing.T) {
 	cfg := validConfig()
 	if err := cfg.ValidateAndNormalize(); err != nil {
 		t.Fatalf("ValidateAndNormalize returned error: %v", err)
 	}
-	if cfg.Mode != vars.ModeMixed {
-		t.Fatalf("Mode = %q, want %q", cfg.Mode, vars.ModeMixed)
+	if cfg.Mode != vars.ModeOnline {
+		t.Fatalf("Mode = %q, want %q", cfg.Mode, vars.ModeOnline)
 	}
 }
 

@@ -94,7 +94,7 @@ func requiresMySQL(cfg config.Config) bool {
 // initAll registers command flags and version handling.
 func initAll() {
 	rootCmd.Flags().SortFlags = false
-	rootCmd.Flags().StringVar(&cfg.Mode, "mode", "mixed", "binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online)")
+	rootCmd.Flags().StringVar(&cfg.Mode, "mode", "online", "binlog mode: local files, local files with MySQL metadata, or online MySQL (local|mixed|online)")
 	rootCmd.Flags().StringVarP(&cfg.Host, "host", "h", "127.0.0.1", "MySQL host")
 	rootCmd.Flags().IntVarP(&cfg.Port, "port", "P", 3306, "MySQL port")
 	rootCmd.Flags().StringVarP(&cfg.User, "user", "u", "root", "MySQL user")
