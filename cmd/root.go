@@ -31,6 +31,12 @@ var rootCmd = &cobra.Command{
   # Parse local binlog files without connecting to MySQL.
   mbp --mode local --binlogs mysql-bin.000010,mysql-bin.000011 --output original.sql
 
+  # Parse local binlog files with MySQL table metadata.
+  mbp --mode mixed --binlogs ./mysql-bin.000010 --host 127.0.0.1 --user root --output original.sql
+
+  # Generate rollback SQL from local binlogs with MySQL table metadata.
+  mbp --mode mixed --binlogs ./mysql-bin.000010 --host 127.0.0.1 --user root --rollback --output rollback.sql
+
   # Split original SQL into files containing at most 100000 statements each.
   mbp --mode local --binlogs mysql-bin.000010 --output original.sql --output-chunk-size 100000
 
