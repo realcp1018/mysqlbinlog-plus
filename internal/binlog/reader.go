@@ -325,8 +325,8 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 			// A real rotate event marks the end of the current binlog.
 			return nil
 		}
-		eventStartPos := e.Header.LogPos - e.Header.EventSize
-		if endPos > 0 && eventStartPos >= endPos && (!state.inTransaction || state.transactionBeforeRange) {
+		eventStartPos, hasStartPos := eventStartPosition(e.Header)
+		if endPos > 0 && hasStartPos && eventStartPos >= endPos && (!state.inTransaction || state.transactionBeforeRange) {
 			return stopParseError{}
 		}
 		rowEvents, err := r.processEvent(file, e, fromTime, toTime, state)
@@ -350,15 +350,23 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 		return nil, fmt.Errorf("binlog event is missing header")
 	}
 
-	startPos := e.Header.LogPos - e.Header.EventSize
+	startPos, hasStartPos := eventStartPosition(e.Header)
 	if len(r.cfg.Binlogs) == 1 {
-		if r.cfg.FromPos > 0 && startPos < r.cfg.FromPos {
-			state.update(e, false)
-			return nil, nil
+		if !hasStartPos && (r.cfg.FromPos > 0 || r.cfg.ToPos > 0) {
+			switch e.Event.(type) {
+			case *replication.QueryEvent, *replication.RowsEvent:
+				return nil, fmt.Errorf("cannot apply position range to binlog event with log position %d and event size %d", e.Header.LogPos, e.Header.EventSize)
+			}
 		}
-		if r.cfg.ToPos > 0 && startPos >= r.cfg.ToPos {
-			if !state.inTransaction || state.transactionBeforeRange {
-				return nil, stopParseError{}
+		if hasStartPos {
+			if r.cfg.FromPos > 0 && startPos < r.cfg.FromPos {
+				state.update(e, false)
+				return nil, nil
+			}
+			if r.cfg.ToPos > 0 && startPos >= r.cfg.ToPos {
+				if !state.inTransaction || state.transactionBeforeRange {
+					return nil, stopParseError{}
+				}
 			}
 		}
 	}
@@ -744,4 +752,12 @@ func convertColumns(table *replication.TableMapEvent) []event.Column {
 		columns[i] = event.Column{Name: name, PrimaryKey: primaryKey, GeneratedName: generatedName}
 	}
 	return columns
+}
+
+// eventStartPosition returns the event start position when the header contains enough information.
+func eventStartPosition(header *replication.EventHeader) (uint32, bool) {
+	if header.LogPos < header.EventSize {
+		return 0, false
+	}
+	return header.LogPos - header.EventSize, true
 }

@@ -112,6 +112,52 @@ func TestProcessEventRejectsMissingHeader(t *testing.T) {
 	}
 }
 
+func TestEventStartPositionRejectsUnderflow(t *testing.T) {
+	if got, ok := eventStartPosition(&replication.EventHeader{LogPos: 10, EventSize: 20}); ok || got != 0 {
+		t.Fatalf("eventStartPosition() = (%d, %v), want (0, false)", got, ok)
+	}
+	if got, ok := eventStartPosition(&replication.EventHeader{LogPos: 120, EventSize: 20}); !ok || got != 100 {
+		t.Fatalf("eventStartPosition() = (%d, %v), want (100, true)", got, ok)
+	}
+}
+
+func TestProcessEventRejectsPositionRangeWithoutStartPosition(t *testing.T) {
+	reader := NewReader(config.Config{
+		Binlogs: []string{"mysql-bin.000001"},
+		FromPos: 4,
+	}, nil)
+	_, err := reader.processEvent(
+		"mysql-bin.000001",
+		queryBinlogEvent("BEGIN", 10, 10),
+		nil,
+		nil,
+		&parserState{},
+	)
+	if err == nil {
+		t.Fatal("processEvent returned nil error for an invalid event position")
+	}
+}
+
+func TestProcessEventAllowsMetadataWithoutStartPosition(t *testing.T) {
+	reader := NewReader(config.Config{
+		Binlogs: []string{"mysql-bin.000001"},
+		FromPos: 4,
+	}, nil)
+	_, err := reader.processEvent(
+		"mysql-bin.000001",
+		&replication.BinlogEvent{
+			Header: &replication.EventHeader{EventSize: 20, LogPos: 10},
+			Event:  &replication.FormatDescriptionEvent{},
+		},
+		nil,
+		nil,
+		&parserState{},
+	)
+	if err != nil {
+		t.Fatalf("processEvent returned error for metadata event: %v", err)
+	}
+}
+
 func TestUpdateParserStateMarksSchemaUnreliableAfterDDL(t *testing.T) {
 	tracker := &parserState{}
 
