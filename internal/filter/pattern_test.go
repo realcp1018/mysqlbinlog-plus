@@ -23,6 +23,12 @@ func TestNormalizePatternsRejectsInvalidPattern(t *testing.T) {
 	}
 }
 
+func TestNormalizePatternsRejectsInvalidGlob(t *testing.T) {
+	if _, err := NormalizePatterns([]string{"app.["}); err == nil {
+		t.Fatal("NormalizePatterns returned nil error, want invalid glob error")
+	}
+}
+
 func TestMatchAny(t *testing.T) {
 	patterns, err := NormalizePatterns([]string{"app.user?", "audit"})
 	if err != nil {

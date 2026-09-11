@@ -27,6 +27,9 @@ func NormalizePatterns(patterns []string) ([]string, error) {
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return nil, fmt.Errorf("table pattern %q must be database.table", pattern)
 		}
+		if _, err := path.Match(value, ""); err != nil {
+			return nil, fmt.Errorf("table pattern %q has invalid glob syntax: %w", pattern, err)
+		}
 		normalized = append(normalized, value)
 	}
 
