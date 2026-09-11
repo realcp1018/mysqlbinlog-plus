@@ -204,8 +204,8 @@ func (w *Writer) Append(ctx context.Context, record Record) error {
 	return err
 }
 
-// Close commits the transaction and closes writer resources.
-func (w *Writer) Close() error {
+// finish commits or rolls back the transaction and closes writer resources.
+func (w *Writer) finish(commit bool) error {
 	var firstErr error
 	if w.stmt != nil {
 		if err := w.stmt.Close(); err != nil && firstErr == nil {
@@ -214,10 +214,12 @@ func (w *Writer) Close() error {
 		w.stmt = nil
 	}
 	if w.tx != nil {
-		if firstErr != nil {
+		if commit && firstErr == nil {
+			if err := w.tx.Commit(); err != nil {
+				firstErr = err
+			}
+		} else {
 			_ = w.tx.Rollback()
-		} else if err := w.tx.Commit(); err != nil {
-			firstErr = err
 		}
 		w.tx = nil
 	}
@@ -230,28 +232,14 @@ func (w *Writer) Close() error {
 	return firstErr
 }
 
+// Close commits the transaction and closes writer resources.
+func (w *Writer) Close() error {
+	return w.finish(true)
+}
+
 // Abort rolls back the transaction and closes writer resources.
 func (w *Writer) Abort() error {
-	var firstErr error
-	if w.stmt != nil {
-		if err := w.stmt.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		w.stmt = nil
-	}
-	if w.tx != nil {
-		if err := w.tx.Rollback(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		w.tx = nil
-	}
-	if w.db != nil {
-		if err := w.db.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		w.db = nil
-	}
-	return firstErr
+	return w.finish(false)
 }
 
 // initSchema configures SQLite and creates the rollback table.

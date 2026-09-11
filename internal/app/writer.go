@@ -28,15 +28,6 @@ func newSQLWriter(cfg config.Config) (*sqlWriter, error) {
 		output:    cfg.Output,
 		chunkSize: cfg.OutputChunkSize,
 	}
-	if cfg.Output != "" && cfg.OutputChunkSize > 0 {
-		dir := filepath.Dir(cfg.Output)
-		if dir != "." {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return nil, err
-			}
-		}
-		return writer, nil
-	}
 	if cfg.Output != "" {
 		dir := filepath.Dir(cfg.Output)
 		if dir != "." {
@@ -44,6 +35,11 @@ func newSQLWriter(cfg config.Config) (*sqlWriter, error) {
 				return nil, err
 			}
 		}
+	}
+	if cfg.Output != "" && cfg.OutputChunkSize > 0 {
+		return writer, nil
+	}
+	if cfg.Output != "" {
 		file, err := os.Create(cfg.Output)
 		if err != nil {
 			return nil, err

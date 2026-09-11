@@ -29,65 +29,10 @@ func RunOriginal(cfg config.Config) error {
 	defer writer.Close()
 
 	rowEventHandler := newOriginalEventHandler(writer, cfg.NoPrimaryKey)
-
-	switch cfg.Mode {
-	case vars.ModeOnline:
-		client, err := mysql.Open(cfg)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
-		if err := client.Ping(ctx); err != nil {
-			return err
-		}
-		if err := client.CheckBinlogSettings(ctx); err != nil {
-			return err
-		}
-		snapshot, err := client.ShowMasterStatus(ctx)
-		if err != nil {
-			return err
-		}
-		serverID := mysql.GenerateServerID()
-		resolver := mysql.NewSchemaResolver(client)
-		reader := binlog.NewReader(cfg, resolver)
-		if len(cfg.Binlogs) == 0 {
-			logs, err := client.ShowBinaryLogs(ctx)
-			if err != nil {
-				return err
-			}
-			cfg.Binlogs, err = reader.DiscoverRemoteBinlogs(ctx, serverID, logs, snapshot)
-			if err != nil {
-				return err
-			}
-			reader.SetBinlogs(cfg.Binlogs)
-		} else if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
-			return err
-		}
-		return reader.FetchRemoteBinlogs(ctx, serverID, snapshot, rowEventHandler)
-	case vars.ModeMixed:
-		client, err := mysql.Open(cfg)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
-		if err := client.Ping(ctx); err != nil {
-			return err
-		}
-		if err := client.CheckBinlogSettings(ctx); err != nil {
-			return err
-		}
-		reader := binlog.NewReader(cfg, mysql.NewSchemaResolver(client))
-		return reader.ParseBinlogs(ctx, rowEventHandler)
-	case vars.ModeLocal:
-		reader := binlog.NewReader(cfg, nil)
-		fmt.Fprintln(os.Stderr, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
-			"binlog_row_image=FULL, otherwise output may be incomplete or incorrect")
-		return reader.ParseBinlogs(ctx, rowEventHandler)
-	default:
-		return fmt.Errorf("unsupported mode %q", cfg.Mode)
+	if err := parseBinlogs(ctx, &cfg, rowEventHandler); err != nil {
+		return err
 	}
+	return nil
 }
 
 // RunRollback parses selected binlog events and writes rollback SQL.
@@ -104,69 +49,9 @@ func RunRollback(cfg config.Config) error {
 	rollbackLogger.Printf("[INFO] Building rollback cache in %q...", cfg.RollbackCacheDir)
 
 	rowEventHandler := newRollbackEventHandler(ctx, store, cfg.NoPrimaryKey)
-
-	var readErr error
-	switch cfg.Mode {
-	case vars.ModeOnline:
-		client, err := mysql.Open(cfg)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
-		if err := client.Ping(ctx); err != nil {
-			return err
-		}
-		if err := client.CheckBinlogSettings(ctx); err != nil {
-			return err
-		}
-		snapshot, err := client.ShowMasterStatus(ctx)
-		if err != nil {
-			return err
-		}
-		serverID := mysql.GenerateServerID()
-		resolver := mysql.NewSchemaResolver(client)
-		reader := binlog.NewReader(cfg, resolver)
-		if len(cfg.Binlogs) == 0 {
-			logs, err := client.ShowBinaryLogs(ctx)
-			if err != nil {
-				return err
-			}
-			cfg.Binlogs, err = reader.DiscoverRemoteBinlogs(ctx, serverID, logs, snapshot)
-			if err != nil {
-				return err
-			}
-			reader.SetBinlogs(cfg.Binlogs)
-		} else if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
-			return err
-		}
-		readErr = reader.FetchRemoteBinlogs(ctx, serverID, snapshot, rowEventHandler.Handle)
-	case vars.ModeMixed:
-		client, err := mysql.Open(cfg)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
-		if err := client.Ping(ctx); err != nil {
-			return err
-		}
-		if err := client.CheckBinlogSettings(ctx); err != nil {
-			return err
-		}
-		reader := binlog.NewReader(cfg, mysql.NewSchemaResolver(client))
-		readErr = reader.ParseBinlogs(ctx, rowEventHandler.Handle)
-	case vars.ModeLocal:
-		reader := binlog.NewReader(cfg, nil)
-		fmt.Fprintln(os.Stderr, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
-			"binlog_row_image=FULL, otherwise output may be incomplete or incorrect")
-		readErr = reader.ParseBinlogs(ctx, rowEventHandler.Handle)
-	default:
-		readErr = fmt.Errorf("unsupported mode %q", cfg.Mode)
-	}
-	if readErr != nil {
+	if err := parseBinlogs(ctx, &cfg, rowEventHandler.Handle); err != nil {
 		_ = rowEventHandler.Abort()
-		return readErr
+		return err
 	}
 	if err := rowEventHandler.Close(); err != nil {
 		return err
@@ -268,5 +153,67 @@ func newOriginalEventHandler(writer *sqlWriter, noPrimaryKey bool) func(binlog.R
 			}
 		}
 		return writer.Write(appendEventTimeComment(sqlText, rowEvent.EventTime))
+	}
+}
+
+// parseBinlogs runs the shared local, mixed, and online binlog parsing flow.
+func parseBinlogs(ctx context.Context, cfg *config.Config, rowEventHandler func(binlog.RowEvent) error) error {
+	switch cfg.Mode {
+	case vars.ModeOnline:
+		client, err := mysql.Open(*cfg)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+
+		if err := client.Ping(ctx); err != nil {
+			return err
+		}
+		if err := client.CheckBinlogSettings(ctx); err != nil {
+			return err
+		}
+		snapshot, err := client.ShowMasterStatus(ctx)
+		if err != nil {
+			return err
+		}
+		serverID := mysql.GenerateServerID()
+		resolver := mysql.NewSchemaResolver(client)
+		reader := binlog.NewReader(*cfg, resolver)
+		if len(cfg.Binlogs) == 0 {
+			logs, err := client.ShowBinaryLogs(ctx)
+			if err != nil {
+				return err
+			}
+			cfg.Binlogs, err = reader.DiscoverRemoteBinlogs(ctx, serverID, logs, snapshot)
+			if err != nil {
+				return err
+			}
+			reader.SetBinlogs(cfg.Binlogs)
+		} else if err := client.CheckBinaryLogsExist(ctx, cfg.Binlogs); err != nil {
+			return err
+		}
+		return reader.FetchRemoteBinlogs(ctx, serverID, snapshot, rowEventHandler)
+	case vars.ModeMixed:
+		client, err := mysql.Open(*cfg)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+
+		if err := client.Ping(ctx); err != nil {
+			return err
+		}
+		if err := client.CheckBinlogSettings(ctx); err != nil {
+			return err
+		}
+		reader := binlog.NewReader(*cfg, mysql.NewSchemaResolver(client))
+		return reader.ParseBinlogs(ctx, rowEventHandler)
+	case vars.ModeLocal:
+		reader := binlog.NewReader(*cfg, nil)
+		fmt.Fprintln(os.Stderr, "Warning: local mode requires the source binlog to be generated with binlog_format=ROW and "+
+			"binlog_row_image=FULL, otherwise output may be incomplete or incorrect")
+		return reader.ParseBinlogs(ctx, rowEventHandler)
+	default:
+		return fmt.Errorf("unsupported mode %q", cfg.Mode)
 	}
 }
