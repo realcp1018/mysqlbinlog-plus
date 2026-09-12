@@ -13,6 +13,14 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 )
 
+var sqlStringReplacer = strings.NewReplacer(
+	"\\", "\\\\",
+	"'", "''",
+	"\x00", "\\0",
+	"\n", "\\n",
+	"\r", "\\r",
+)
+
 type SQLType string
 
 const (
@@ -289,14 +297,7 @@ func charsetHexLiteral(charset string, value []byte) string {
 
 // quoteString quotes and escapes a MySQL string literal.
 func quoteString(value string) string {
-	replacer := strings.NewReplacer(
-		"\\", "\\\\",
-		"'", "''",
-		"\x00", "\\0",
-		"\n", "\\n",
-		"\r", "\\r",
-	)
-	return "'" + replacer.Replace(value) + "'"
+	return "'" + sqlStringReplacer.Replace(value) + "'"
 }
 
 // valuesEqual compares row values with special handling for bytes and time values.

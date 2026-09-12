@@ -6,6 +6,26 @@ import (
 	"time"
 )
 
+var quoteStringBenchmarkResult string
+
+// BenchmarkQuoteString measures SQL string escaping time and allocations.
+func BenchmarkQuoteString(b *testing.B) {
+	for _, tc := range []struct {
+		name  string
+		value string
+	}{
+		{name: "plain", value: "ordinary text value"},
+		{name: "escaped", value: "O'Reilly\\path\x00\n\r中文"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				quoteStringBenchmarkResult = quoteString(tc.value)
+			}
+		})
+	}
+}
+
 func TestOriginalInsertSQL(t *testing.T) {
 	sql, err := (&RowChange{
 		Schema: "app",
