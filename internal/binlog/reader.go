@@ -77,6 +77,9 @@ func (r *Reader) ParseBinlogs(ctx context.Context, rowEventHandler func(RowEvent
 	state := &parserState{}
 
 	for _, file := range r.cfg.Binlogs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := parser.ParseFile(file, int64(binlogStartPos), func(e *replication.BinlogEvent) error {
 			select {
 			case <-ctx.Done():
@@ -85,11 +88,14 @@ func (r *Reader) ParseBinlogs(ctx context.Context, rowEventHandler func(RowEvent
 			default:
 			}
 
-			rowEvents, err := r.processEvent(file, e, fromTime, toTime, state)
+			rowEvents, err := r.processEvent(ctx, file, e, fromTime, toTime, state)
 			if err != nil {
 				return err
 			}
 			for _, rowEvent := range rowEvents {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				if err := rowEventHandler(rowEvent); err != nil {
 					return err
 				}
@@ -103,7 +109,7 @@ func (r *Reader) ParseBinlogs(ctx context.Context, rowEventHandler func(RowEvent
 			return err
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 // StreamOnline streams binlog events from an online MySQL position.
@@ -131,7 +137,7 @@ func (r *Reader) StreamOnline(ctx context.Context, position mysql.BinlogPosition
 		if rotate, ok := e.Event.(*replication.RotateEvent); ok && len(rotate.NextLogName) > 0 {
 			currentFile = string(rotate.NextLogName)
 		}
-		rowEvents, err := r.processEvent(currentFile, e, fromTime, toTime, state)
+		rowEvents, err := r.processEvent(ctx, currentFile, e, fromTime, toTime, state)
 		if err != nil {
 			var stop stopParseError
 			if errors.As(err, &stop) {
@@ -140,6 +146,9 @@ func (r *Reader) StreamOnline(ctx context.Context, position mysql.BinlogPosition
 			return err
 		}
 		for _, rowEvent := range rowEvents {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if err := rowEventHandler(rowEvent); err != nil {
 				return err
 			}
@@ -329,11 +338,14 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 		if endPos > 0 && hasStartPos && eventStartPos >= endPos && (!state.inTransaction || state.transactionBeforeRange) {
 			return stopParseError{}
 		}
-		rowEvents, err := r.processEvent(file, e, fromTime, toTime, state)
+		rowEvents, err := r.processEvent(ctx, file, e, fromTime, toTime, state)
 		if err != nil {
 			return err
 		}
 		for _, rowEvent := range rowEvents {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if err := rowEventHandler(rowEvent); err != nil {
 				return err
 			}
@@ -345,7 +357,7 @@ func (r *Reader) fetchRemoteBinlog(ctx context.Context, syncer *replication.Binl
 }
 
 // processEvent filters and converts one raw binlog event into output events.
-func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime, toTime *time.Time, state *parserState) ([]RowEvent, error) {
+func (r *Reader) processEvent(ctx context.Context, file string, e *replication.BinlogEvent, fromTime, toTime *time.Time, state *parserState) ([]RowEvent, error) {
 	if e.Header == nil {
 		return nil, fmt.Errorf("binlog event is missing header")
 	}
@@ -425,7 +437,7 @@ func (r *Reader) processEvent(file string, e *replication.BinlogEvent, fromTime,
 	fallbackColumns := convertColumns(rows.Table)
 	columns := fallbackColumns
 	if r.schemaResolver != nil && !state.schemaUnreliableFor(schema, table) {
-		resolved, metadataMismatch, err := r.schemaResolver.Resolve(schema, table, fallbackColumns)
+		resolved, metadataMismatch, err := r.schemaResolver.Resolve(ctx, schema, table, fallbackColumns)
 		if err != nil {
 			return nil, err
 		}

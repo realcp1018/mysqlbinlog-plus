@@ -2,15 +2,41 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"mysqlbinlog-plus/internal/config"
 	"mysqlbinlog-plus/internal/vars"
 )
 
 var initRootOnce sync.Once
+
+// TestRootCmdContextCancellation forwards command cancellation before creating output.
+func TestRootCmdContextCancellation(t *testing.T) {
+	saved := cfg
+	t.Cleanup(func() { cfg = saved })
+	cfg = config.Config{
+		Mode: vars.ModeLocal, Port: 3306, Binlogs: []string{"mysql-bin.000001"},
+		Output: filepath.Join(t.TempDir(), "output.sql"), OutputChunkSize: -1,
+	}
+	command := &cobra.Command{RunE: rootCmd.RunE, SilenceErrors: true, SilenceUsage: true}
+	command.SetArgs([]string{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := command.ExecuteContext(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ExecuteContext error = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(cfg.Output); !os.IsNotExist(err) {
+		t.Fatalf("unexpected output file: %v", err)
+	}
+}
 
 func TestRootCmdRejectsMutuallyExclusiveFlags(t *testing.T) {
 	initRootOnce.Do(initAll)

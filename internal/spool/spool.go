@@ -290,6 +290,9 @@ FROM rollback_records`
 	defer rows.Close()
 
 	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		var (
 			record    Record
 			eventTime string
@@ -318,5 +321,8 @@ FROM rollback_records`
 			return err
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return ctx.Err()
 }

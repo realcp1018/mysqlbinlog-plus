@@ -1,7 +1,11 @@
 package binlog
 
 import (
+	"context"
+	"encoding/binary"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -12,6 +16,46 @@ import (
 	"mysqlbinlog-plus/internal/config"
 	"mysqlbinlog-plus/internal/event"
 )
+
+// TestParseBinlogsCancellation stops between events and closes the input file.
+func TestParseBinlogsCancellation(t *testing.T) {
+	data := append([]byte(nil), replication.BinLogFileHeader...)
+	for i := 0; i < 2; i++ {
+		query := "CREATE TABLE app.t (id INT)"
+		// A query event has a 19-byte event header and a 13-byte post-header,
+		// followed by the empty schema's NUL terminator and the query text.
+		raw := make([]byte, 19+14+len(query))
+		binary.LittleEndian.PutUint32(raw, 1)
+		raw[4] = byte(replication.QUERY_EVENT)
+		binary.LittleEndian.PutUint32(raw[5:], 1)
+		binary.LittleEndian.PutUint32(raw[9:], uint32(len(raw)))
+		binary.LittleEndian.PutUint32(raw[13:], uint32(len(data)+len(raw)))
+		copy(raw[33:], query)
+		data = append(data, raw...)
+	}
+	path := filepath.Join(t.TempDir(), "mysql-bin.000001")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reader := NewReader(config.Config{Mode: "local", Binlogs: []string{path}}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	count := 0
+	err := reader.ParseBinlogs(ctx, func(RowEvent) error {
+		count++
+		cancel()
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ParseBinlogs error = %v, want context.Canceled", err)
+	}
+	if count != 1 {
+		t.Fatalf("handled %d events, want 1", count)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("input file was not released: %v", err)
+	}
+}
 
 // TestRestoreUnsignedRows verifies unsigned boundaries in generated original and rollback SQL.
 func TestRestoreUnsignedRows(t *testing.T) {
@@ -106,7 +150,7 @@ func TestUpdateParserState(t *testing.T) {
 
 func TestProcessEventRejectsMissingHeader(t *testing.T) {
 	reader := NewReader(config.Config{}, nil)
-	_, err := reader.processEvent("mysql-bin.000001", &replication.BinlogEvent{}, nil, nil, &parserState{})
+	_, err := reader.processEvent(context.Background(), "mysql-bin.000001", &replication.BinlogEvent{}, nil, nil, &parserState{})
 	if err == nil {
 		t.Fatal("processEvent returned nil error for event without header")
 	}
@@ -126,7 +170,7 @@ func TestProcessEventRejectsPositionRangeWithoutStartPosition(t *testing.T) {
 		Binlogs: []string{"mysql-bin.000001"},
 		FromPos: 4,
 	}, nil)
-	_, err := reader.processEvent(
+	_, err := reader.processEvent(context.Background(),
 		"mysql-bin.000001",
 		queryBinlogEvent("BEGIN", 10, 10),
 		nil,
@@ -143,7 +187,7 @@ func TestProcessEventAllowsMetadataWithoutStartPosition(t *testing.T) {
 		Binlogs: []string{"mysql-bin.000001"},
 		FromPos: 4,
 	}, nil)
-	_, err := reader.processEvent(
+	_, err := reader.processEvent(context.Background(),
 		"mysql-bin.000001",
 		&replication.BinlogEvent{
 			Header: &replication.EventHeader{EventSize: 20, LogPos: 10},
@@ -260,7 +304,7 @@ func TestConvertEmitsDDLByDefault(t *testing.T) {
 	reader := NewReader(config.Config{}, nil)
 	e := ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT")
 	e.Event.(*replication.QueryEvent).Schema = []byte("app")
-	events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", e, nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -283,7 +327,7 @@ func TestConvertEmitsMetadataNeutralDDL(t *testing.T) {
 	reader := NewReader(config.Config{SQLTypes: []string{string(event.DDL)}}, nil)
 	e := ddlBinlogEvent("TRUNCATE TABLE t")
 	e.Event.(*replication.QueryEvent).Schema = []byte("app")
-	events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", e, nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -298,7 +342,7 @@ func TestConvertEmitsMetadataNeutralDDL(t *testing.T) {
 // TestConvertSkipsNonDDLQuery verifies that SQL type matching does not turn transaction commands into DDL output.
 func TestConvertSkipsNonDDLQuery(t *testing.T) {
 	reader := NewReader(config.Config{SQLTypes: []string{string(event.DDL)}}, nil)
-	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("BEGIN"), nil, nil, &parserState{})
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", ddlBinlogEvent("BEGIN"), nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -312,7 +356,7 @@ func TestConvertKeepsDDLSchema(t *testing.T) {
 	reader := NewReader(config.Config{}, nil)
 	e := ddlBinlogEvent("ALTER TABLE other.t ADD COLUMN age INT")
 	e.Event.(*replication.QueryEvent).Schema = []byte("app")
-	events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", e, nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -340,7 +384,7 @@ func TestConvertFiltersDDLByTablePattern(t *testing.T) {
 			reader := NewReader(config.Config{TablePatterns: []string{"dba_admin.redis_mem"}}, nil)
 			e := ddlBinlogEvent(tt.query)
 			e.Event.(*replication.QueryEvent).Schema = []byte("dba_admin")
-			events, err := reader.processEvent("mysql-bin.000001", e, nil, nil, &parserState{})
+			events, err := reader.processEvent(context.Background(), "mysql-bin.000001", e, nil, nil, &parserState{})
 			if err != nil {
 				t.Fatalf("convert returned error: %v", err)
 			}
@@ -353,7 +397,7 @@ func TestConvertFiltersDDLByTablePattern(t *testing.T) {
 
 func TestConvertFiltersDDLBySQLType(t *testing.T) {
 	reader := NewReader(config.Config{SQLTypes: []string{string(event.Insert)}}, nil)
-	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -367,7 +411,7 @@ func TestConvertDoesNotEmitDDLInRollbackMode(t *testing.T) {
 		Rollback: true,
 		SQLTypes: []string{string(event.DDL)},
 	}, nil)
-	events, err := reader.processEvent("mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", ddlBinlogEvent("ALTER TABLE t ADD COLUMN age INT"), nil, nil, &parserState{})
 	if err != nil {
 		t.Fatalf("convert returned error: %v", err)
 	}
@@ -382,16 +426,16 @@ func TestProcessEventCompletesTransactionBeyondToTime(t *testing.T) {
 	from := time.Unix(10, 0)
 	to := time.Unix(20, 0)
 
-	if _, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("BEGIN", 10, 120), &from, &to, state); err != nil {
+	if _, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("BEGIN", 10, 120), &from, &to, state); err != nil {
 		t.Fatalf("process BEGIN: %v", err)
 	}
-	if _, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("COMMIT", 21, 140), &from, &to, state); err != nil {
+	if _, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("COMMIT", 21, 140), &from, &to, state); err != nil {
 		t.Fatalf("process COMMIT beyond to-time: %v", err)
 	}
 	if state.inTransaction {
 		t.Fatal("transaction remains open after COMMIT")
 	}
-	_, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("BEGIN", 21, 160), &from, &to, state)
+	_, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("BEGIN", 21, 160), &from, &to, state)
 	var stop stopParseError
 	if !errors.As(err, &stop) {
 		t.Fatalf("event after completed transaction error = %v, want stopParseError", err)
@@ -403,17 +447,17 @@ func TestProcessEventSkipsTransactionStartedBeforeFromTime(t *testing.T) {
 	state := &parserState{}
 	from := time.Unix(10, 0)
 
-	if _, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("BEGIN", 9, 120), &from, nil, state); err != nil {
+	if _, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("BEGIN", 9, 120), &from, nil, state); err != nil {
 		t.Fatalf("process BEGIN: %v", err)
 	}
-	events, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("ALTER TABLE t ADD COLUMN age INT", 11, 140), &from, nil, state)
+	events, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("ALTER TABLE t ADD COLUMN age INT", 11, 140), &from, nil, state)
 	if err != nil {
 		t.Fatalf("process event in skipped transaction: %v", err)
 	}
 	if len(events) != 0 {
 		t.Fatalf("process event in skipped transaction returned %d events, want 0", len(events))
 	}
-	if _, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("COMMIT", 12, 160), &from, nil, state); err != nil {
+	if _, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("COMMIT", 12, 160), &from, nil, state); err != nil {
 		t.Fatalf("process COMMIT: %v", err)
 	}
 }
@@ -422,13 +466,13 @@ func TestProcessEventCompletesTransactionBeyondToPos(t *testing.T) {
 	reader := NewReader(config.Config{Binlogs: []string{"mysql-bin.000001"}, FromPos: 100, ToPos: 200}, nil)
 	state := &parserState{}
 
-	if _, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("BEGIN", 10, 120), nil, nil, state); err != nil {
+	if _, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("BEGIN", 10, 120), nil, nil, state); err != nil {
 		t.Fatalf("process BEGIN: %v", err)
 	}
-	if _, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("COMMIT", 11, 220), nil, nil, state); err != nil {
+	if _, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("COMMIT", 11, 220), nil, nil, state); err != nil {
 		t.Fatalf("process COMMIT beyond to-pos: %v", err)
 	}
-	_, err := reader.processEvent("mysql-bin.000001", queryBinlogEvent("BEGIN", 12, 240), nil, nil, state)
+	_, err := reader.processEvent(context.Background(), "mysql-bin.000001", queryBinlogEvent("BEGIN", 12, 240), nil, nil, state)
 	var stop stopParseError
 	if !errors.As(err, &stop) {
 		t.Fatalf("event after completed transaction error = %v, want stopParseError", err)

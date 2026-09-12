@@ -112,6 +112,9 @@ func buildRollbackChunkPlans(ctx context.Context, store *spool.Store, binlogFile
 			return nil, err
 		}
 		for consumed := 0; consumed < count; {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			space := chunkSize - currentLen
 			take := count - consumed
 			if take > space {
@@ -137,7 +140,7 @@ func buildRollbackChunkPlans(ctx context.Context, store *spool.Store, binlogFile
 	if currentLen > 0 {
 		plans = append(plans, current)
 	}
-	return plans, nil
+	return plans, ctx.Err()
 }
 
 // writeRollbackChunks writes rollback output into fixed-size chunk files.
@@ -213,6 +216,9 @@ sendJobs:
 
 // writeRollbackChunk writes one planned rollback chunk to disk.
 func writeRollbackChunk(ctx context.Context, store *spool.Store, output string, plan rollbackChunkPlan) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	path := fmt.Sprintf("%s.%06d", output, plan.index)
 	file, err := os.Create(path)
 	if err != nil {

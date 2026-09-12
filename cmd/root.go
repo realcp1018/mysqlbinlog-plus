@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"mysqlbinlog-plus/internal/app"
 	"mysqlbinlog-plus/internal/config"
 	"mysqlbinlog-plus/internal/vars"
 	"os"
+	"os/signal"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -71,15 +73,15 @@ var rootCmd = &cobra.Command{
 		// - parse selected binlogs and generate rollback SQL (mode=online/mixed/local)
 		// - parse selected binlogs and generate original SQL (mode=online/mixed/local)
 		if cfg.ListBinlogs {
-			return app.ListOnlineBinlogs(cfg)
+			return app.ListOnlineBinlogs(cmd.Context(), cfg)
 		}
 		if len(cfg.Binlogs) == 0 && cfg.FromTime == "" && cfg.ToTime == "" {
-			return app.StreamOnline(cfg)
+			return app.StreamOnline(cmd.Context(), cfg)
 		}
 		if cfg.Rollback {
-			return app.RunRollback(cfg)
+			return app.RunRollback(cmd.Context(), cfg)
 		}
-		return app.RunOriginal(cfg)
+		return app.RunOriginal(cmd.Context(), cfg)
 	},
 }
 
@@ -133,7 +135,10 @@ func initAll() {
 // Execute initializes and runs the root command.
 func Execute() {
 	initAll()
-	if err := rootCmd.Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	err := rootCmd.ExecuteContext(ctx)
+	stop()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

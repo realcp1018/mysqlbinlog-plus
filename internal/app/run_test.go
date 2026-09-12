@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,6 +14,41 @@ import (
 	"mysqlbinlog-plus/internal/event"
 	"mysqlbinlog-plus/internal/spool"
 )
+
+// TestWriteRollbackChunksCanceled preserves existing output and cached records.
+func TestWriteRollbackChunksCanceled(t *testing.T) {
+	dir := t.TempDir()
+	store := spool.NewStore(filepath.Join(dir, "spool"))
+	if err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	appendRollbackRecords(t, context.Background(), store, []spool.Record{
+		{BinlogFile: "mysql-bin.000001", SQLText: "SELECT 1;"},
+	})
+	output := filepath.Join(dir, "rollback.sql")
+	if err := os.WriteFile(output+".000001", []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := writeRollbackChunks(ctx, store, config.Config{
+		Binlogs: []string{"mysql-bin.000001"}, Output: output, OutputChunkSize: 1,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("writeRollbackChunks error = %v, want context.Canceled", err)
+	}
+	assertFileContent(t, output+".000001", "existing")
+	count, err := store.CountRecords(context.Background(), "mysql-bin.000001")
+	if err != nil || count != 1 {
+		t.Fatalf("cached record count = %d, error = %v; want 1, nil", count, err)
+	}
+	if err := writeRollbackChunk(ctx, store, output, rollbackChunkPlan{index: 2}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("writeRollbackChunk error = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(output + ".000002"); !os.IsNotExist(err) {
+		t.Fatalf("unexpected second output file: %v", err)
+	}
+}
 
 func TestSQLWriterSplitOutput(t *testing.T) {
 	dir := t.TempDir()

@@ -2,12 +2,40 @@ package spool
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 )
+
+// TestReadReverseCancellation stops emitting records when the caller cancels.
+func TestReadReverseCancellation(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "spool"))
+	if err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	appendTestRecords(t, context.Background(), store, []Record{
+		{BinlogFile: "mysql-bin.000001", SQLText: "first"},
+		{BinlogFile: "mysql-bin.000001", SQLText: "second"},
+		{BinlogFile: "mysql-bin.000001", SQLText: "third"},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	count := 0
+	err := store.ReadReverse(ctx, []string{"mysql-bin.000001"}, func(Record) error {
+		count++
+		cancel()
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ReadReverse error = %v, want context.Canceled", err)
+	}
+	if count != 1 {
+		t.Fatalf("emitted %d records, want 1", count)
+	}
+}
 
 func TestStoreReadReverse(t *testing.T) {
 	ctx := context.Background()

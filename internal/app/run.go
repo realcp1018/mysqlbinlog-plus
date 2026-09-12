@@ -20,8 +20,10 @@ import (
 var rollbackLogger = log.New(os.Stderr, "", log.LstdFlags)
 
 // RunOriginal parses selected binlog events and writes original SQL.
-func RunOriginal(cfg config.Config) error {
-	ctx := context.Background()
+func RunOriginal(ctx context.Context, cfg config.Config) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	writer, err := newSQLWriter(cfg)
 	if err != nil {
 		return err
@@ -36,8 +38,10 @@ func RunOriginal(cfg config.Config) error {
 }
 
 // RunRollback parses selected binlog events and writes rollback SQL.
-func RunRollback(cfg config.Config) error {
-	ctx := context.Background()
+func RunRollback(ctx context.Context, cfg config.Config) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	rollbackLogger.Println("[INFO] Rollback started.")
 	if cfg.RollbackCacheDirIsDefault {
 		rollbackLogger.Printf("[WARN] Using default rollback cache dir %q. The rollback may fail if the cache runs out of disk space.", cfg.RollbackCacheDir)
@@ -80,6 +84,9 @@ func RunRollback(cfg config.Config) error {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := store.Cleanup(); err != nil {
 		return err
 	}
@@ -88,8 +95,7 @@ func RunRollback(cfg config.Config) error {
 }
 
 // ListOnlineBinlogs prints online MySQL binlog files.
-func ListOnlineBinlogs(cfg config.Config) error {
-	ctx := context.Background()
+func ListOnlineBinlogs(ctx context.Context, cfg config.Config) error {
 	client, err := mysql.Open(cfg)
 	if err != nil {
 		return err
@@ -111,8 +117,7 @@ func ListOnlineBinlogs(cfg config.Config) error {
 }
 
 // StreamOnline streams online binlog events and writes original SQL.
-func StreamOnline(cfg config.Config) error {
-	ctx := context.Background()
+func StreamOnline(ctx context.Context, cfg config.Config) error {
 	client, err := mysql.Open(cfg)
 	if err != nil {
 		return err

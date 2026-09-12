@@ -263,7 +263,7 @@ func NewSchemaResolver(client *Client) *SchemaResolver {
 }
 
 // Resolve returns table metadata and reports whether it is incompatible with the binlog metadata.
-func (r *SchemaResolver) Resolve(schemaName, tableName string, fallback []event.Column) ([]event.Column, bool, error) {
+func (r *SchemaResolver) Resolve(ctx context.Context, schemaName, tableName string, fallback []event.Column) ([]event.Column, bool, error) {
 	key := schemaName + "." + tableName
 	if r.incompatible[key] {
 		return fallback, true, nil
@@ -271,8 +271,11 @@ func (r *SchemaResolver) Resolve(schemaName, tableName string, fallback []event.
 	if columns, ok := r.cache[key]; ok {
 		return columns, false, nil
 	}
-	columns, err := r.client.LoadTableColumns(context.Background(), schemaName, tableName)
+	columns, err := r.client.LoadTableColumns(ctx, schemaName, tableName)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, false, ctx.Err()
+		}
 		if len(fallback) > 0 {
 			return fallback, false, nil
 		}
